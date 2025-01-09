@@ -9,15 +9,11 @@ from autoppia_agentic_framework.src.documents.application.VectorStoreAdapter imp
 from autoppia_agentic_framework.src.tools.application.UserToolkitAdapter import UserToolkitAdapter
 from autoppia_agentic_framework.src.workers.domain.classes import UserToolkit
 from autoppia_agentic_framework.src.workers.infrastructure.service import WorkerService
-from autoppia_sdk.src.standarization.llm.domain.interfaces import LLMService
-from autoppia_sdk.src.standarization.vector_store.domain.interfaces import VectorStore
 
 
 class AIWorkerAdapter:
-    def __init__(self, worker_id=None, worker_dto=None, llm_service: LLMService = None, vector_store: VectorStore = None):
+    def __init__(self, worker_id=None, worker_dto=None):
         self.worker_service = WorkerService()
-        self.llm_service = llm_service
-        self.vector_store = vector_store
         if worker_dto:
             self.worker_dto: WorkerDTO = worker_dto
         elif worker_id:
@@ -40,17 +36,13 @@ class AIWorkerAdapter:
         )
 
     def from_backend(self):
-        if not self.vector_store:
-            self.vector_store = VectorStoreAdapter(self.vector_store_dto).from_backend()
+        self.vector_store = VectorStoreAdapter(self.vector_store_dto).from_backend()
 
         for user_configuration in self.worker_dto.user_configuration:
             user_toolkit = UserToolkitAdapter(user_configuration).from_backend()
             self.user_toolkits.append(user_toolkit)
 
-        if not self.llm_service:
-            self.user_llm = self.user_llm_dto.llm_model.name
-        else:
-            self.user_llm = self.llm_service
+        self.user_llm = self.user_llm_dto.llm_model.name
 
         return (
             self.user_llm,
