@@ -5,10 +5,9 @@ from autoppia_backend_client.models import ListUserConfiguration as UserToolkitD
 from autoppia_backend_client.models import UserLLMModel as UserLLMModelDTO
 from autoppia_backend_client.models import Worker as WorkerDTO
 
-from autoppia_agentic_framework.src.documents.application.VectorStoreAdapter import VectorStoreAdapter
-from autoppia_agentic_framework.src.tools.application.UserToolkitAdapter import UserToolkitAdapter
-from autoppia_agentic_framework.src.workers.domain.classes import UserToolkit
-from autoppia_agentic_framework.src.workers.infrastructure.service import WorkerService
+from autoppia_sdk.src.orchestration.vector_store.adapter import VectorStoreAdapter
+from autoppia_sdk.src.orchestration.toolkits.adapter import UserToolkitAdapter
+from autoppia_sdk.src.orchestration.workers.infrastructure.service import WorkerService
 
 
 class AIWorkerAdapter:
