@@ -1,6 +1,6 @@
 from autoppia_backend_client.models import EmbeddingDatabase as VectorStoreDTO
 
-from autoppia_agentic_framework.src.documents.infrastructure.pinecone_manager import PineconeManager
+from autoppia_sdk.src.orchestration.vector_store.pinecone_manager import PineconeManager
 
 
 class VectorStoreAdapter:

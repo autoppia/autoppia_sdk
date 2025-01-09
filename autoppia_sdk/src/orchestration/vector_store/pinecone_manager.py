@@ -9,8 +9,8 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pinecone import Pinecone
 
-from autoppia_agentic_framework.src.documents.domain.vector_store_interface import VectorStoreWrapper
-from autoppia_agentic_framework.src.documents.infrastructure.s3_manager import S3Manager
+from autoppia_sdk.src.standardization.vector_store.interface import VectorStoreWrapper
+from autoppia_sdk.src.orchestration.vector_store.s3_manager import S3Manager
 
 
 class PineconeManager(VectorStoreWrapper):
