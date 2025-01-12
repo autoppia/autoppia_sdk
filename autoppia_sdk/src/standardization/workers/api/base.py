@@ -3,7 +3,7 @@ from typing import Optional, Type
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from autoppia_sdk.src.workers.domain.interfaces import AIWorker
+from autoppia_sdk.src.standardization.workers.interfaces import AIWorker
 
 
 class WorkerMessage(BaseModel):
