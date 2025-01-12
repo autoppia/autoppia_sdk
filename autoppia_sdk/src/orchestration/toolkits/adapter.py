@@ -1,6 +1,6 @@
 from autoppia_backend_client.models import ListUserConfiguration as UserToolkitDTO
 
-from autoppia_sdk.src.standardization.toolkits.interface import UserToolkit
+from autoppia_sdk.src.standardization.toolkits.interfaces import UserToolkit
 
 
 class UserToolkitAdapter:

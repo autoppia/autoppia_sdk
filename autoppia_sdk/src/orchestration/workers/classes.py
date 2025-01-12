@@ -19,7 +19,7 @@ from autoppia_agentic_framework.src.threads.application.openai.thread_manager im
 from autoppia_agentic_framework.src.tools.application.all import all_toolkits
 from autoppia_agentic_framework.src.tools.domain.classes import ToolkitList
 from autoppia_sdk.src.orchestration.workers.adapter import AIWorkerAdapter
-from autoppia_sdk.src.standardization.toolkits.interface import UserToolkit
+from autoppia_sdk.src.standardization.toolkits.interfaces import UserToolkit
 
 
 class AIWorker:
