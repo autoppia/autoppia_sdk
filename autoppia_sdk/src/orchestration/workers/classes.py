@@ -4,7 +4,6 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 
 from autoppia_agentic_framework.src.ai_bootstrap import AIBootstrap
-from autoppia_agentic_framework.src.assistants.domain.classes import BaseAssistant
 from autoppia_agentic_framework.src.processes.application.openai.new_message import (
     OpenAINewMessageProccess,
 )
@@ -94,9 +93,8 @@ class AIWorker:
 
         # Initialize AI components
         bootstrap = AIBootstrap()
-        self.system_prompt = BaseAssistant.get_instructions_template("toolkit_executor")
         self.llmModel = self._get_llm_model(bootstrap)
-        self.instructions = self.system_prompt.get_prompt() + self.instruction
+        self.instructions = self.instruction
 
         if self.agent == "openai":
             self._setup_openai_assistant(thread_id, test_mode)
