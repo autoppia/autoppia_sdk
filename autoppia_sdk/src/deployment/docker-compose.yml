@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  generic-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: generic-worker
+    environment:
+      # We can define these in a .env file or inline
+      - WORKER_ID=${WORKER_ID}
+      - WORKER_TEMPLATE_REPO_URL=${WORKER_TEMPLATE_REPO_URL}
+    ports:
+      - "80:8000"
+    restart: unless-stopped
