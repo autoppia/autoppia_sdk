@@ -1,7 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain.schema.language_model import BaseLanguageModel
-from autoppia_sdk.src.standardization.llms.interfaces import LLMServiceInterface
+from autoppia_sdk.src.llms.interfaces import LLMServiceInterface
 
 class OpenAIService(LLMServiceInterface):
     def __init__(self, api_key: str, model: str = "gpt-4o"):

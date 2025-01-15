@@ -6,7 +6,7 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any, Dict, List, Optional
-from autoppia_sdk.src.standardization.integrations.interfaces import Integration
+from autoppia_sdk.src.integrations.interfaces import Integration
 
 
 class EmailIntegration(Integration):
