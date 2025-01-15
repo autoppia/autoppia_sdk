@@ -10,6 +10,8 @@ from autoppia_sdk.src.orchestration.toolkits.adapter import UserToolkitAdapter
 from autoppia_sdk.src.orchestration.workers.infrastructure.service import WorkerService
 
 
+
+
 class AIWorkerAdapter:
     def __init__(self, worker_id=None, worker_dto=None):
         self.worker_service = WorkerService()
@@ -50,3 +52,11 @@ class AIWorkerAdapter:
             self.agent,
             self.instruction,
         )
+
+    def create_worker_from_id(worker_id: str) -> AIWorker:
+        # 1. Use AIWorkerAdapter to fetch the WorkerDTO from backend
+        # 2. Parse the worker type or module/class name
+        # 3. Dynamically import the worker’s Python class 
+        #    (or if you already pip installed, you can do import)
+        # 4. Initialize the worker with the merged config
+        return MyWorker(...)
