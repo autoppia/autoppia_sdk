@@ -11,10 +11,9 @@ class WorkerMessage(BaseModel):
 
 
 class WorkerAPI:
-    def __init__(self, worker_class: Type[AIWorker], title: str, description: str):
+    def __init__(self, worker, title: str, description: str):
         self.app = FastAPI(title=title, description=description)
-        self.worker_class = worker_class
-        self.worker: Optional[AIWorker] = None
+        self.worker: Optional[AIWorker] = worker
 
         # Register routes
         self.setup_routes()
@@ -22,7 +21,6 @@ class WorkerAPI:
     def setup_routes(self):
         @self.app.on_event("startup")
         async def startup_event():
-            self.worker = self.worker_class.from_config()
             self.worker.start()
 
         @self.app.on_event("shutdown")
