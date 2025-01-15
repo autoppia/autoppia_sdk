@@ -1,7 +1,7 @@
 from openai import OpenAI
 
 from autoppia_sdk.src.standardization.vector_store.interfaces import VectorStoreWrapper
-from autoppia_sdk.src.orchestration.vector_store.s3_manager import S3Manager
+from autoppia_sdk.src.orchestration.vectorstores.s3_manager import S3Manager
 
 
 class OpenaiManager(VectorStoreWrapper):

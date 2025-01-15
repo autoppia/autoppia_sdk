@@ -8,7 +8,7 @@ config.host = "https://api.autoppia.com"
 api_client = ApiClient(configuration=config)
 
 
-class WorkerService:
+class WorkerUserConfService:
     def __init__(self):
         self.api_client = api_client
 
