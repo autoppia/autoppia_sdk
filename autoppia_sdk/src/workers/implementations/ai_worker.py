@@ -4,7 +4,6 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 
 from autoppia_agentic_framework.src.ai_bootstrap import AIBootstrap
-# from autoppia_agentic_framework.src.assistants.domain.classes import BaseAssistant
 from autoppia_agentic_framework.src.processes.application.openai.new_message import (
     OpenAINewMessageProccess,
 )

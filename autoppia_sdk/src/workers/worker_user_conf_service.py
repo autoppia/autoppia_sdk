@@ -1,4 +1,4 @@
-from autoppia_backend_client.api.workers_api import WorkersApi
+from autoppia_sdk.src.workers.worker_api import WorkersApi
 from autoppia_backend_client.api_client import ApiClient
 from autoppia_backend_client.configuration import Configuration
 from autoppia_backend_client.models import Worker as WorkerDTO
