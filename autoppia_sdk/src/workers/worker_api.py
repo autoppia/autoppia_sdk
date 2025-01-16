@@ -11,9 +11,10 @@ class WorkerMessage(BaseModel):
 
 
 class WorkerAPI:
-    def __init__(self, worker):
-        self.app = FastAPI(title="WorkerAPI", description="API Wrapper for deployed worker")
-        self.worker: AIWorker = worker
+    def __init__(self, worker_class: Type[AIWorker], title: str, description: str):
+        self.app = FastAPI(title=title, description=description)
+        self.worker_class = worker_class
+        self.worker: Optional[AIWorker] = None
 
         # Register routes
         self.setup_routes()
@@ -21,6 +22,7 @@ class WorkerAPI:
     def setup_routes(self):
         @self.app.on_event("startup")
         async def startup_event():
+            self.worker = self.worker_class.from_config()
             self.worker.start()
 
         @self.app.on_event("shutdown")
@@ -45,8 +47,3 @@ class WorkerAPI:
 
     def get_app(self) -> FastAPI:
         return self.app
-    
-    @classmethod
-    def from_worker_id(cls, worker_id, worker_class):
-        worker = AIWorkerAdapter(worker_id).from_backend()
-        return cls(worker)
