@@ -1,5 +1,5 @@
 from typing import Dict, Type
-from autoppia_sdk.src.standardization.llms.interfaces import LLMServiceInterface
+from autoppia_sdk.src.llms.interface import LLMServiceInterface
 
 class LLMRegistry:
     _instance = None
