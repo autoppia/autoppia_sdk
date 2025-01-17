@@ -10,6 +10,8 @@ from autoppia_sdk.src.toolkits.adapter import UserToolkitAdapter
 from autoppia_sdk.src.workers.worker_user_conf_service import WorkerUserConfService
 from autoppia_sdk.src.toolkits.interface import UserToolkit
 
+from typing import Dict, Any, Optional
+from dataclasses import dataclass
 
 class AIWorkerAdapter:
     def __init__(self, worker_id=None, worker_dto=None):
@@ -51,3 +53,75 @@ class AIWorkerAdapter:
             self.agent,
             self.instruction,
         )
+
+@dataclass
+class IntegrationConfig:
+    name: str
+    category: str
+    attributes: Dict[str, Any]
+
+class WorkerConfigAdapter:
+    def __init__(self, worker_data: Dict[str, Any]):
+        self.worker_data = worker_data
+        self.template = worker_data.get("template", {})
+        self.user_integrations = worker_data.get("user_integration", [])
+        
+    def get_integration_by_category(self, category: str) -> Optional[IntegrationConfig]:
+        """Extract integration configuration by category."""
+        for integration in self.user_integrations:
+            if category in integration["integration_obj"]["category"]:
+                attributes = {}
+                for attr in integration["user_integration_attributes"]:
+                    name = attr["integration_attribute_obj"]["name"]
+                    # Handle both credential and regular values
+                    if attr["credential_obj"]:
+                        value = attr["credential_obj"]["credential"]
+                    else:
+                        value = attr["value"]
+                    attributes[name] = value
+                
+                return IntegrationConfig(
+                    name=integration["name"],
+                    category=integration["integration_obj"]["category"],
+                    attributes=attributes
+                )
+        return None
+
+    def get_worker_metadata(self) -> Dict[str, Any]:
+        """Extract worker metadata."""
+        return {
+            "id": self.worker_data.get("id"),
+            "name": self.worker_data.get("name"),
+            "description": self.template.get("description"),
+            "category": self.template.get("integration_category"),
+            "state": self.worker_data.get("state", False)
+        }
+
+    def get_system_prompt(self) -> Optional[Dict[str, Any]]:
+        """Extract system prompt configuration."""
+        prompt_data = self.worker_data.get("system_prompt")
+        if prompt_data:
+            return {
+                "name": prompt_data.get("name"),
+                "category": prompt_data.get("category", {}).get("name"),
+                "prompt": prompt_data.get("prompt")
+            }
+        return None
+
+    def to_worker_config(self) -> Dict[str, Any]:
+        """Convert all configurations to worker format."""
+        config = {
+            "metadata": self.get_worker_metadata(),
+            "system_prompt": self.get_system_prompt()
+        }
+        
+        # Add all integrations found in the worker data
+        integrations = {}
+        for integration in self.user_integrations:
+            category = integration["integration_obj"]["category"]
+            integration_config = self.get_integration_by_category(category)
+            if integration_config:
+                integrations[category] = integration_config.attributes
+        
+        config["integrations"] = integrations
+        return config 
