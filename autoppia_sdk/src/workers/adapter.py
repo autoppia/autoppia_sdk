@@ -61,28 +61,28 @@ class IntegrationConfig:
     attributes: Dict[str, Any]
 
 class WorkerConfigAdapter:
-    def __init__(self, worker_data: Dict[str, Any]):
+    def __init__(self, worker_data):
         self.worker_data = worker_data
-        self.template = worker_data.get("template", {})
-        self.user_integrations = worker_data.get("user_integration", [])
+        self.template = getattr(worker_data, 'template', {})
+        self.user_integrations = getattr(worker_data, 'user_integration', [])
         
     def get_integration_by_category(self, category: str) -> Optional[IntegrationConfig]:
         """Extract integration configuration by category."""
         for integration in self.user_integrations:
-            if category in integration["integration_obj"]["category"]:
+            if category in integration.integration_obj.category:
                 attributes = {}
-                for attr in integration["user_integration_attributes"]:
-                    name = attr["integration_attribute_obj"]["name"]
+                for attr in integration.user_integration_attributes:
+                    name = attr.integration_attribute_obj.name
                     # Handle both credential and regular values
-                    if attr["credential_obj"]:
-                        value = attr["credential_obj"]["credential"]
+                    if attr.credential_obj:
+                        value = attr.credential_obj.credential
                     else:
-                        value = attr["value"]
+                        value = attr.value
                     attributes[name] = value
                 
                 return IntegrationConfig(
-                    name=integration["name"],
-                    category=integration["integration_obj"]["category"],
+                    name=integration.name,
+                    category=integration.integration_obj.category,
                     attributes=attributes
                 )
         return None
@@ -90,21 +90,21 @@ class WorkerConfigAdapter:
     def get_worker_metadata(self) -> Dict[str, Any]:
         """Extract worker metadata."""
         return {
-            "id": self.worker_data.get("id"),
-            "name": self.worker_data.get("name"),
-            "description": self.template.get("description"),
-            "category": self.template.get("integration_category"),
-            "state": self.worker_data.get("state", False)
+            "id": getattr(self.worker_data, 'id', None),
+            "name": getattr(self.worker_data, 'name', None),
+            "description": getattr(self.template, 'description', None),
+            "category": getattr(self.template, 'integration_category', None),
+            "state": getattr(self.worker_data, 'state', False)
         }
 
     def get_system_prompt(self) -> Optional[Dict[str, Any]]:
         """Extract system prompt configuration."""
-        prompt_data = self.worker_data.get("system_prompt")
+        prompt_data = getattr(self.worker_data, 'system_prompt', None)
         if prompt_data:
             return {
-                "name": prompt_data.get("name"),
-                "category": prompt_data.get("category", {}).get("name"),
-                "prompt": prompt_data.get("prompt")
+                "name": getattr(prompt_data, 'name', None),
+                "category": getattr(getattr(prompt_data, 'category', {}), 'name', None),
+                "prompt": getattr(prompt_data, 'prompt', None)
             }
         return None
 
@@ -118,10 +118,11 @@ class WorkerConfigAdapter:
         # Add all integrations found in the worker data
         integrations = {}
         for integration in self.user_integrations:
-            category = integration["integration_obj"]["category"]
+            category = integration.integration_obj.category
             integration_config = self.get_integration_by_category(category)
             if integration_config:
                 integrations[category] = integration_config.attributes
         
         config["integrations"] = integrations
-        return config 
+        return config
+    
