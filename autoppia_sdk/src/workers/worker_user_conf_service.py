@@ -9,21 +9,23 @@ config.host = "https://api.autoppia.com"
 api_client = ApiClient(configuration=config)
 
 
-class WorkerUserConfService:
+class UserWorkerConfigService:
     def __init__(self):
         self.api_client = api_client
 
-    def retrieveWorker(self, worker_id) -> WorkerDTO:
+    def get_worker_config(self, worker_id) -> WorkerConfigDTO:
+        #TODO
         workersApi = WorkersApi(self.api_client)
-        worker: WorkerDTO = workersApi.workers_configuration_worker_read(worker_id)
-        return worker
+        # worker: WorkerDTO = workersApi.workers_configuration_worker_read(worker_id)
+        return WorkerConfigDTO
 
 
-class CoworkerUserConfService:
+class UserWorkerService:
     def __init__(self):
         self.api_client = api_client
 
-    def retrieveCoworker(self, coworker_id) -> CoworkerDTO:
-        coworkersApi = CoworkersApi(self.api_client)
-        coworker: CoworkerDTO = coworkersApi.coworkers_configuration_coworkers_read(coworker_id)
-        return coworker
+    def get_worker(self, coworker_id) -> WorkerDTO:
+         #TODO
+        # coworkersApi = CoworkersApi(self.api_client)
+        # coworker: CoworkerDTO = coworkersApi.coworkers_configuration_coworkers_read(coworker_id)
+        return WorkerDTO

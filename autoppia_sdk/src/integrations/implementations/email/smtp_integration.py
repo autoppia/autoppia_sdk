@@ -5,27 +5,21 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Dict, List, Optional
-from autoppia_sdk.src.integrations.interface import Integration
+from typing import Dict, List, Optional
+from autoppia_sdk.src.integrations.implementations.email.interface import EmailIntegration
+from autoppia_sdk.src.integrations.adapter import IntegrationConfig
+from autoppia_sdk.src.integrations.implementations.base import Integration
 
 
-class EmailIntegration(Integration):
-    def __init__(self):
-        self.smtp_server: Optional[str] = None
-        self.smtp_port: Optional[int] = None
-        self.imap_server: Optional[str] = None
-        self.imap_port: Optional[int] = None
-        self.username: Optional[str] = None
-        self._password: Optional[str] = None
-
-    def configure(self, user_config: Dict[str, Any]) -> None:
-        """Configure email settings from user configuration"""
-        self.smtp_server = user_config["smtp_server"]
-        self.smtp_port = user_config["smtp_port"]
-        self.imap_server = user_config["imap_server"]
-        self.imap_port = user_config["imap_port"]
-        self.username = user_config["username"]
-        self._password = user_config["password"]
+class SMPTEmailIntegration(EmailIntegration, Integration):
+    def __init__(self, integration_config: IntegrationConfig):
+        self.integration_config = integration_config
+        self.smtp_server = integration_config.attributes.get("smtp_server")
+        self.smtp_port = integration_config.attributes.get("smtp_port")
+        self.imap_server = integration_config.attributes.get("imap_server")
+        self.imap_port = integration_config.attributes.get("imap_port")
+        self.username = integration_config.attributes.get("username")
+        self._password = integration_config.attributes.get("password")
 
     def send_email(
         self,
@@ -98,7 +92,8 @@ class EmailIntegration(Integration):
                             part.get_content_type() == "text/plain"
                             and "attachment" not in str(part.get("Content-Disposition"))
                         ):
-                            email_data["Body"] = part.get_payload(decode=True).decode()
+                            email_data["Body"] = part.get_payload(
+                                decode=True).decode()
                             break
                 else:
                     email_data["Body"] = (

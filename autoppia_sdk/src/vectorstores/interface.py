@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class VectorStoreWrapper(ABC):
+class VectorStoreInterface(ABC):
     @abstractmethod
     def get_or_create_collection(self, collection_name):
         pass

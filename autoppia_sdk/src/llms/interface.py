@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from langchain.schema.language_model import BaseLanguageModel
 
+
 class LLMServiceInterface(ABC):
     @abstractmethod
     def get_llm(self) -> BaseLanguageModel:
@@ -15,4 +16,4 @@ class LLMServiceInterface(ABC):
     @abstractmethod
     def update_api_key(self, api_key: str) -> None:
         """Update the API key"""
-        pass 
+        pass
