@@ -11,12 +11,7 @@ from autoppia_sdk.src.workers.interface import WorkerConfig
 
 class AIWorkerConfigAdapter:
     def __init__(self, worker_id=None):
-        self.worker_service = WorkerUserConfService()
         self.worker_id = worker_id
-
-    def get_worker_config(self):
-        worker_config_dto: WorkerConfigDTO = self.worker_service.retrive_worker_config(worker_id=self.worker_id)
-        return self.worker_config_dto
 
     def adapt_integrations(self):
         self.integrations = IntegrationsAdapter().from_autoppia_backend(self.worker_config_dtao)
@@ -32,9 +27,8 @@ class AIWorkerConfigAdapter:
     def adapt_toolkits(self):
         raise Exception("We are not using this YET. do not implement yet.")
 
-    def from_autoppia_user_backend(self):
-        self.worker_config_dtao = self.get_worker_config()
+    def from_autoppia_user_backend(self, worker_config_dtao):
+        self.worker_config_dtao = worker_config_dtao
         integrations = self.adapt_integrations()
         worker_config = WorkerConfig(integrations=integrations)
         return worker_config
-
