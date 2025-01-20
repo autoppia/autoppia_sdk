@@ -1,31 +1,17 @@
-from autoppia_backend_client.api.workers_api import WorkersApi
-from autoppia_backend_client.api.coworkers_api import CoworkersApi
+from autoppia_backend_client.api.workers_config_api import WorkersConfigApi
 from autoppia_backend_client.api_client import ApiClient
 from autoppia_backend_client.configuration import Configuration
-from autoppia_backend_client.models import Worker as WorkerDTO, Coworker as CoworkerDTO
+from autoppia_backend_client.models import WorkerConfig  as WorkerConfigDTO
 
 config = Configuration()
 config.host = "https://api.autoppia.com"
 api_client = ApiClient(configuration=config)
 
-
-class UserWorkerConfigService:
+class WorkerUserConfService:
     def __init__(self):
         self.api_client = api_client
 
-    def get_worker_config(self, worker_id) -> WorkerConfigDTO:
-        #TODO
-        workersApi = WorkersApi(self.api_client)
-        # worker: WorkerDTO = workersApi.workers_configuration_worker_read(worker_id)
-        return WorkerConfigDTO
-
-
-class UserWorkerService:
-    def __init__(self):
-        self.api_client = api_client
-
-    def get_worker(self, coworker_id) -> WorkerDTO:
-         #TODO
-        # coworkersApi = CoworkersApi(self.api_client)
-        # coworker: CoworkerDTO = coworkersApi.coworkers_configuration_coworkers_read(coworker_id)
-        return WorkerDTO
+    def retrieveWorker(self, worker_id) -> WorkerConfigDTO:
+        workersApi = WorkersConfigApi(self.api_client)
+        workerConfig: WorkerConfigDTO = workersApi.workers_config_workers_read(worker_id)
+        return workerConfig
