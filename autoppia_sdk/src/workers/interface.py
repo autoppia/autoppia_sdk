@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from src.integrations.interface import IntegrationInterface
-from src.llms.interface import LLMServiceInterface
-from src.vectorstores.interface import VectorStoreInterface
+from autoppia_sdk.src.integrations.interface import IntegrationInterface
+from autoppia_sdk.src.llms.interface import LLMServiceInterface
+from autoppia_sdk.src.vectorstores.interface import VectorStoreInterface
 
 
 class WorkerConfig():
