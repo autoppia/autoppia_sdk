@@ -14,7 +14,7 @@ class AIWorkerConfigAdapter:
         self.worker_id = worker_id
 
     def adapt_integrations(self):
-        self.integrations = IntegrationsAdapter().from_autoppia_backend(self.worker_config_dtao)
+        return IntegrationsAdapter().from_autoppia_backend(self.worker_config_dtao)
 
     def adapt_vector_stores(self):
         pass
@@ -30,5 +30,9 @@ class AIWorkerConfigAdapter:
     def from_autoppia_user_backend(self, worker_config_dtao):
         self.worker_config_dtao = worker_config_dtao
         integrations = self.adapt_integrations()
-        worker_config = WorkerConfig(integrations=integrations)
+        worker_config = WorkerConfig(
+            integrations=integrations,
+            system_prompt=worker_config_dtao.system_prompt.prompt if worker_config_dtao.system_prompt else None,
+            name=worker_config_dtao.name
+        )
         return worker_config
