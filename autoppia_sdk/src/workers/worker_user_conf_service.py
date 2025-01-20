@@ -11,7 +11,7 @@ class WorkerUserConfService:
     def __init__(self):
         self.api_client = api_client
 
-    def retrieveWorker(self, worker_id) -> WorkerConfigDTO:
+    def retrieve_worker_config(self, worker_id) -> WorkerConfigDTO:
         workersApi = WorkersConfigApi(self.api_client)
         workerConfig: WorkerConfigDTO = workersApi.workers_config_workers_read(worker_id)
         return workerConfig
