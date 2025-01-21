@@ -17,7 +17,7 @@ check_env_vars() {
 # Function to handle cleanup on script exit
 cleanup() {
     log "Cleaning up..."
-    if [ -d "/app/'$WORKER_ID'" ]; then
+    if [ -d "/app/$WORKER_ID" ]; then
         rm -rf /app/"$WORKER_ID"
     fi
 }
@@ -41,6 +41,22 @@ main() {
 
     # Change to worker directory
     cd /app/"$WORKER_ID"
+
+    # Create .env file with credentials
+    log "Creating .env file..."
+    cat > .env << EOL
+# OpenAI Configuration
+OPENAI_API_KEY=${OPENAI_API_KEY}
+
+# Github Configuration
+GITHUB_TOKEN=${GITHUB_TOKEN}
+
+# Gitlab Configuration
+GITLAB_TOKEN=${GITLAB_TOKEN}
+
+# Other Configurations
+WORKER_ID=${WORKER_ID}
+EOL
 
     # Check if deploy.sh exists and is executable
     if [ ! -f "deploy.sh" ]; then
