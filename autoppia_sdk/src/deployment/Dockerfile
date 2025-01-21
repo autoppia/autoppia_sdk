@@ -1,29 +1,43 @@
-# syntax=docker/dockerfile:1
-FROM python:3.11.4
+# Use Python 3.11 slim as base image
+FROM python:3.11-slim
 
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    git \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
 WORKDIR /app
 
-# Install any system dependencies needed for building wheels, Git, etc.
-RUN apt-get update && apt-get install -y git
+# Create a non-root user
+RUN useradd -m -u 1000 worker && \
+    chown -R worker:worker /app
 
-# Copy only the requirements for the generic worker runtime
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy entrypoint script
+COPY --chown=worker:worker scripts/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-# Copy your generic worker code (autoppia_sdk)
-COPY . /app
+# Switch to non-root user
+USER worker
 
-# Optionally define build args if you want them at build time
-ARG WORKER_TEMPLATE_REPO_URL
-ARG WORKER_ID
+# Create cache directory for pip
+RUN mkdir -p /app/.cache/pip && \
+    chown -R worker:worker /app/.cache/pip
 
-# Expose the FastAPI port
-EXPOSE 8000
+# Set pip cache environment variable
+ENV PIP_CACHE_DIR=/app/.cache/pip
 
-# We assume these become environment variables inside the container as well
-ENV WORKER_TEMPLATE_REPO_URL=${WORKER_TEMPLATE_REPO_URL}
-ENV WORKER_ID=${WORKER_ID}
+# Set Python to run in unbuffered mode
+ENV PYTHONUNBUFFERED=1
 
-# Copy or set your run.sh as entrypoint
-RUN chmod +x /app/run.sh
-ENTRYPOINT ["/app/run.sh"]
+# Create volume for pip cache
+VOLUME ["/app/.cache/pip"]
+
+# Expose the default worker port
+EXPOSE 8080
+
+# Set the entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"] 
