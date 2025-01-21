@@ -1,11 +1,15 @@
-# Use Python 3.11 slim as base image
-FROM python:3.11-slim
+# Use Python 3.11.4 slim as base image
+FROM python:3.11.4-slim
 
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y \
     git \
     curl \
+    postgresql-client \
+    postgresql-server-dev-all \
+    gcc \
+    python3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

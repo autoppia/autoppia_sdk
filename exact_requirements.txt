@@ -123,3 +123,4 @@ wrapt==1.15.0
 wsproto==1.2.0
 yarl==1.9.2
 zipp==3.17.0
+psycopg2
