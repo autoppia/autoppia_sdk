@@ -17,8 +17,8 @@ check_env_vars() {
 # Function to handle cleanup on script exit
 cleanup() {
     log "Cleaning up..."
-    if [ -d "/app/worker" ]; then
-        rm -rf /app/worker
+    if [ -d "/app/'$WORKER_ID'" ]; then
+        rm -rf /app/"$WORKER_ID"
     fi
 }
 
