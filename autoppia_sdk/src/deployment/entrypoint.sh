@@ -48,12 +48,6 @@ main() {
 # OpenAI Configuration
 OPENAI_API_KEY=${OPENAI_API_KEY}
 
-# Github Configuration
-GITHUB_TOKEN=${GITHUB_TOKEN}
-
-# Gitlab Configuration
-GITLAB_TOKEN=${GITLAB_TOKEN}
-
 # Other Configurations
 WORKER_ID=${WORKER_ID}
 EOL
