@@ -17,7 +17,7 @@ RUN useradd -m -u 1000 worker && \
     chown -R worker:worker /app
 
 # Copy entrypoint script
-COPY --chown=worker:worker scripts/entrypoint.sh /app/entrypoint.sh
+COPY --chown=worker:worker entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # Switch to non-root user
