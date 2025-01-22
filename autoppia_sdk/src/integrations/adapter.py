@@ -1,16 +1,7 @@
-from typing import Dict, Any
-from dataclasses import dataclass
-from autoppia_sdk.src.integrations.implementations.email.smtp_integration import (
-    SMPTEmailIntegration)
+from autoppia_sdk.src.integrations.models import IntegrationConfig
+from autoppia_sdk.src.integrations.implementations.email.smtp_integration import SMPTEmailIntegration
 from autoppia_sdk.src.integrations.interface import IntegrationInterface
 from autoppia_sdk.src.integrations.implementations.base import Integration
-
-
-@dataclass
-class IntegrationConfig:
-    name: str
-    category: str
-    attributes: Dict[str, Any]
 
 
 class IntegrationConfigAdapter():
@@ -25,18 +16,17 @@ class IntegrationConfigAdapter():
             attributes[attr.integration_attribute_obj.name] = value
 
         integration_config = IntegrationConfig(
-            worker_config_dto.name,
+            worker_config_dto.integration_obj.name,
             worker_config_dto.integration_obj.category,
             attributes
         )
         return integration_config
 
-
 class IntegrationsAdapter():
     def __init__(self):
         self.integration_mapping = {
             "email": {
-                "Smtp": SMPTEmailIntegration  # Changed from "smpt" to "Smtp" to match mock data
+                "Smtp": SMPTEmailIntegration
             }
         }
 
@@ -47,6 +37,8 @@ class IntegrationsAdapter():
             category = integration.integration_obj.category
             if category not in integrations:
                 integrations[category] = {}
+            
+            print(integration)
 
             integration_config = IntegrationConfigAdapter.from_autoppia_backend(integration)
             integration_class = self.integration_mapping[integration_config.category][integration_config.name]

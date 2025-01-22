@@ -14,11 +14,11 @@ from autoppia_sdk.src.integrations.implementations.base import Integration
 class SMPTEmailIntegration(EmailIntegration, Integration):
     def __init__(self, integration_config: IntegrationConfig):
         self.integration_config = integration_config
-        self.smtp_server = integration_config.attributes.get("smtp_server")
-        self.smtp_port = integration_config.attributes.get("smtp_port")
-        self.imap_server = integration_config.attributes.get("imap_server")
-        self.imap_port = integration_config.attributes.get("imap_port")
-        self.username = integration_config.attributes.get("username")
+        self.smtp_server = integration_config.attributes.get("SMTP Server")
+        self.smtp_port = integration_config.attributes.get("SMTP Port")
+        self.imap_server = integration_config.attributes.get("IMAP Server")
+        self.imap_port = integration_config.attributes.get("IMAP Port")
+        self.email = integration_config.attributes.get("email")
         self._password = integration_config.attributes.get("password")
 
     def send_email(
@@ -32,7 +32,7 @@ class SMPTEmailIntegration(EmailIntegration, Integration):
         """Send an email using configured settings"""
         try:
             msg = MIMEMultipart()
-            msg["From"] = self.username
+            msg["From"] = self.email
             msg["To"] = to
             msg["Subject"] = subject
 
@@ -54,12 +54,12 @@ class SMPTEmailIntegration(EmailIntegration, Integration):
                     msg.attach(part)
 
             server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)
-            server.login(self.username, self._password)
+            server.login(self.email, self._password)
             server.send_message(msg)
             server.quit()
 
             content_snippet = (html_body or body)[:50]
-            return f"Email sent successfully from {self.username} to {to}. Message content preview: '{content_snippet}'"
+            return f"Email sent successfully from {self.email} to {to}. Message content preview: '{content_snippet}'"
         except Exception as e:
             print(f"An error occurred: {e}")
             return None
@@ -69,7 +69,7 @@ class SMPTEmailIntegration(EmailIntegration, Integration):
         imap_conn = None
         try:
             imap_conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
-            imap_conn.login(self.username, self._password)
+            imap_conn.login(self.email, self._password)
             imap_conn.select("inbox")
 
             _, message_numbers = imap_conn.search(None, "ALL")
