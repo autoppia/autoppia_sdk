@@ -52,6 +52,9 @@ OPENAI_API_KEY=${OPENAI_API_KEY}
 WORKER_ID=${WORKER_ID}
 EOL
 
+    # Add local bin to PATH
+    export PATH="$HOME/.local/bin:$PATH"
+
     # Check if deploy.sh exists and is executable
     if [ ! -f "deploy.sh" ]; then
         log "Error: deploy.sh not found in repository"
