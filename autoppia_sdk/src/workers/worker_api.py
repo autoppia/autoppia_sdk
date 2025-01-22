@@ -1,17 +1,13 @@
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from autoppia_sdk.src.workers.implementations.ai_worker import AIWorker
-
-
 class WorkerMessage(BaseModel):
     message: str
 
-
 class WorkerAPI:
-    def __init__(self, worker: AIWorker):
+    def __init__(self, worker):
         self.app = FastAPI(title="Worker API", description="API Wrapper for the worker")
-        self.worker: Optional[AIWorker] = worker
+        self.worker = worker
 
         # Register routes
         self.setup_routes()

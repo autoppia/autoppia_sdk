@@ -2,15 +2,18 @@ from abc import ABC, abstractmethod
 from autoppia_sdk.src.integrations.interface import IntegrationInterface
 from autoppia_sdk.src.llms.interface import LLMServiceInterface
 from autoppia_sdk.src.vectorstores.interface import VectorStoreInterface
+from dataclasses import dataclass, field
+from typing import Dict
 
 
-class WorkerConfig():
-    instructions: str
-    system_prompt: str
-    integrations: dict[IntegrationInterface]
-    llms: dict[str, LLMServiceInterface]
-    vectorstores: dict[str, VectorStoreInterface]
-    extra_arguments: dict[str, str]
+@dataclass
+class WorkerConfig:
+    name: str = None
+    system_prompt: str = None
+    integrations: Dict = field(default_factory=dict)
+    llms: Dict = field(default_factory=dict)
+    vectorstores: Dict = field(default_factory=dict)
+    extra_arguments: Dict = field(default_factory=dict)
 
 
 class AIWorker(ABC):

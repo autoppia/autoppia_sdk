@@ -8,7 +8,6 @@ from autoppia_sdk.src.workers.worker_user_conf_service import WorkerUserConfServ
 from autoppia_sdk.src.integrations.adapter import IntegrationsAdapter
 from autoppia_sdk.src.workers.interface import WorkerConfig
 
-
 class AIWorkerConfigAdapter:
     def __init__(self, worker_id=None):
         self.worker_id = worker_id
