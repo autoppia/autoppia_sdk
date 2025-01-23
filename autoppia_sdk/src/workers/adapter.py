@@ -20,7 +20,8 @@ class AIWorkerConfigAdapter:
     def adapt_vector_stores(self):
         if self.worker_config_dtao.embedding_database:
             vector_store = VectorStoreAdapter(self.worker_config_dtao.embedding_database).from_backend()
-            return {"openai": vector_store} if vector_store else {}
+            provider = self.worker_config_dtao.embedding_database.provider
+            return {provider: vector_store} if vector_store else {}
         return {}
 
     def adapt_llms(self):
