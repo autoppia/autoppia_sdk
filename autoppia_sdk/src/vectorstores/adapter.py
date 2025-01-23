@@ -1,6 +1,7 @@
 from autoppia_backend_client.models import EmbeddingDatabase as VectorStoreDTO
 
 from autoppia_sdk.src.vectorstores.implementations.pinecone_manager import PineconeManager
+from autoppia_sdk.src.vectorstores.implementations.openai_manager import OpenAIManager
 
 
 class VectorStoreAdapter:
@@ -10,9 +11,10 @@ class VectorStoreAdapter:
     def from_backend(self):
         provider = self.vector_store_dto.provider
         if provider == "OPENAI":
-            return self.vector_store_dto.openai_vector_store_id
-
+            return OpenAIManager(vector_store_id=self.vector_store_dto.openai_vector_store_id)
         elif provider == "PINECONE":
-            api_key = self.vector_store_dto.api_key
-            index_name = self.vector_store_dto.index_name
-            return PineconeManager(api_key=api_key, index_name=index_name)
+            return PineconeManager(
+                api_key=self.vector_store_dto.api_key,
+                index_name=self.vector_store_dto.index_name
+            )
+        return None
