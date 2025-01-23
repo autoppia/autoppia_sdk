@@ -37,8 +37,6 @@ class IntegrationsAdapter():
             category = integration.integration_obj.category
             if category not in integrations:
                 integrations[category] = {}
-            
-            print(integration)
 
             integration_config = IntegrationConfigAdapter.from_autoppia_backend(integration)
             integration_class = self.integration_mapping[integration_config.category][integration_config.name]
