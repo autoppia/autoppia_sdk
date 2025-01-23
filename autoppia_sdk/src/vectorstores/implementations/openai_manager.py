@@ -4,7 +4,7 @@ from autoppia_sdk.src.vectorstores.interface import VectorStoreInterface
 from autoppia_sdk.src.vectorstores.implementations.s3_manager import S3Manager
 
 
-class OpenaiManager(VectorStoreInterface):
+class OpenAIManager(VectorStoreInterface):
     def __init__(self, index_name: str, vector_store_id: str = None):
         self.vector_store_id = vector_store_id
         self.client = OpenAI()
