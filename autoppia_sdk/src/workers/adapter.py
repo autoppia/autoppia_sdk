@@ -1,50 +1,92 @@
-from typing import List
-
+from typing import Optional, Dict, Any
 from autoppia_backend_client.models import EmbeddingDatabase as VectorStoreDTO
-from autoppia_backend_client.models import ListUserConfiguration as UserToolkitDTO
-from autoppia_backend_client.models import UserLLMModel as UserLLMModelDTO
-from autoppia_backend_client.models import Worker as WorkerDTO
-from autoppia_sdk.src.workers.worker_user_conf_service import WorkerUserConfService
 from autoppia_sdk.src.integrations.adapter import IntegrationsAdapter
 from autoppia_sdk.src.vectorstores.adapter import VectorStoreAdapter
 from autoppia_sdk.src.llms.adapter import LLMAdapter
 from autoppia_sdk.src.workers.interface import WorkerConfig
 
+
 class AIWorkerConfigAdapter:
-    def __init__(self, worker_id=None):
+    """Adapter for constructing worker configurations from backend DTOs.
+    
+    Handles conversion of backend data transfer objects into domain-specific
+    configuration models with proper validation and resource management.
+    
+    Args:
+        worker_id: Optional identifier for worker instance tracking
+    """
+    
+    def __init__(self, worker_id: Optional[str] = None) -> None:
         self.worker_id = worker_id
+        self.worker_config_dto: Optional[VectorStoreDTO] = None
 
-    def adapt_integrations(self):
-        return IntegrationsAdapter().from_autoppia_backend(self.worker_config_dtao)
-
-    def adapt_vector_stores(self):
-        if self.worker_config_dtao.embedding_database:
-            vector_store = VectorStoreAdapter(self.worker_config_dtao.embedding_database).from_backend()
-            provider = self.worker_config_dtao.embedding_database.provider
-            return {provider: vector_store} if vector_store else {}
-        return {}
-
-    def adapt_llms(self):
-        if self.worker_config_dtao.user_llm_model:
-            llm = LLMAdapter(self.worker_config_dtao.user_llm_model).from_backend()
-            provider = self.worker_config_dtao.user_llm_model.llm_model.provider.provider_type.lower()
-            return {provider: llm} if llm else {}
-        return {}
-
-    def adapt_toolkits(self):
-        raise Exception("We are not using this YET. do not implement yet.")
-
-    def from_autoppia_user_backend(self, worker_config_dtao):
-        self.worker_config_dtao = worker_config_dtao
-        integrations = self.adapt_integrations()
-        vector_stores = self.adapt_vector_stores()
-        llms = self.adapt_llms()
+    def adapt_integrations(self) -> Dict[str, Any]:
+        """Adapt integrations configuration from backend DTO.
         
-        worker_config = WorkerConfig(
-            integrations=integrations,
-            vectorstores=vector_stores,
-            llms=llms,
-            system_prompt=worker_config_dtao.system_prompt.prompt if worker_config_dtao.system_prompt else None,
-            name=worker_config_dtao.name
+        Returns:
+            Dictionary of initialized integration clients keyed by provider
+            
+        Raises:
+            ValueError: If required integration configuration is missing
+        """
+        if not self.worker_config_dto:
+            raise ValueError("Configuration DTO not loaded")
+        return IntegrationsAdapter().from_autoppia_backend(self.worker_config_dto)
+
+    def adapt_vector_stores(self) -> Dict[str, Any]:
+        """Adapt vector store configuration from backend DTO.
+        
+        Returns:
+            Dictionary of vector store clients keyed by provider
+        """
+        if not self.worker_config_dto or not self.worker_config_dto.embedding_database:
+            return {}
+
+        vector_store = VectorStoreAdapter(
+            self.worker_config_dto.embedding_database
+        ).from_backend()
+        
+        return {self.worker_config_dto.embedding_database.provider: vector_store} if vector_store else {}
+
+    def adapt_llms(self) -> Dict[str, Any]:
+        """Adapt LLM configuration from backend DTO.
+        
+        Returns:
+            Dictionary of LLM clients keyed by provider
+        """
+        if not self.worker_config_dto or not self.worker_config_dto.user_llm_model:
+            return {}
+
+        llm = LLMAdapter(self.worker_config_dto.user_llm_model).from_backend()
+        provider = self.worker_config_dto.user_llm_model.llm_model.provider.provider_type
+        return {provider: llm} if llm else {}
+
+    def adapt_toolkits(self) -> None:
+        """Placeholder for toolkit adaptation (not implemented)."""
+        raise NotImplementedError("Toolkit adaptation not yet implemented")
+
+    def from_autoppia_user_backend(self, worker_config_dto: VectorStoreDTO) -> WorkerConfig:
+        """Construct worker configuration from backend DTO with validation.
+        
+        Args:
+            worker_config_dto: Source data transfer object from backend
+            
+        Returns:
+            WorkerConfig: Initialized worker configuration with integrated services
+            
+        Raises:
+            ValueError: For missing required fields or invalid configurations
+            RuntimeError: If service initialization fails
+        """
+        self.worker_config_dto = worker_config_dto
+        
+        if not worker_config_dto.name:
+            raise ValueError("Missing required field: 'name' (worker identifier)")
+
+        return WorkerConfig(
+            integrations=self.adapt_integrations(),
+            vectorstores=self.adapt_vector_stores(),
+            llms=self.adapt_llms(),
+            system_prompt=worker_config_dto.system_prompt.prompt if worker_config_dto.system_prompt else None,
+            name=worker_config_dto.name
         )
-        return worker_config
