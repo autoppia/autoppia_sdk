@@ -11,7 +11,10 @@ class VectorStoreAdapter:
     def from_backend(self):
         provider = self.vector_store_dto.provider
         if provider == "OPENAI":
-            return OpenAIManager(vector_store_id=self.vector_store_dto.openai_vector_store_id)
+            return OpenAIManager(
+                index_name=self.vector_store_dto.index_name, 
+                vector_store_id=self.vector_store_dto.openai_vector_store_id
+            )
         elif provider == "PINECONE":
             return PineconeManager(
                 api_key=self.vector_store_dto.api_key,
