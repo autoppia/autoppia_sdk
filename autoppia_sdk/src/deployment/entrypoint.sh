@@ -8,8 +8,8 @@ log() {
 
 # Function to check required environment variables
 check_env_vars() {
-    if [ -z "$WORKER_ID" ] || [ -z "$WORKER_REPO_URL" ]; then
-        log "Error: WORKER_ID and WORKER_REPO_URL must be set"
+    if [ -z "$WORKER_ID" ] || [ -z "$WORKER_REPO_URL" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+        log "Error: WORKER_ID, WORKER_REPO_URL, and SSH_PRIVATE_KEY must be set"
         exit 1
     fi
 }
@@ -25,10 +25,23 @@ cleanup() {
 # Register cleanup function
 trap cleanup EXIT
 
+# Function to setup SSH
+setup_ssh() {
+    log "Setting up SSH..."
+    mkdir -p ~/.ssh
+    chmod 700 ~/.ssh
+    echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    chmod 600 ~/.ssh/id_rsa
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+}
+
 # Main execution
 main() {
     # Check environment variables
     check_env_vars
+
+    # Setup SSH
+    setup_ssh
 
     # Log startup
     log "Starting worker deployment"
