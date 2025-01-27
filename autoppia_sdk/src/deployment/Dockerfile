@@ -10,6 +10,7 @@ RUN apt-get update && \
     postgresql-server-dev-all \
     gcc \
     python3-dev \
+    openssh-client \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

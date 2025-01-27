@@ -5,6 +5,7 @@ services:
       - WORKER_ID=${WORKER_ID}
       - WORKER_REPO_URL=${WORKER_REPO_URL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SSH_PRIVATE_KEY=${SSH_PRIVATE_KEY}
     ports:
       - "8080:8080"
     volumes:
