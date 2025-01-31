@@ -14,7 +14,19 @@ from autoppia_sdk.src.vectorstores.implementations.s3_manager import S3Manager
 
 
 class PineconeManager(VectorStoreInterface):
+    """Pinecone vector store implementation.
+    
+    Manages vector store operations using Pinecone, including document loading,
+    chunking, and similarity search capabilities.
+    """
+
     def __init__(self, api_key: str, index_name: str):
+        """Initialize Pinecone vector store manager.
+        
+        Args:
+            api_key (str): Pinecone API key
+            index_name (str): Name of the Pinecone index
+        """
         self.embeddings = OpenAIEmbeddings()
         self.index_name = index_name
         self.api_key = api_key
@@ -23,11 +35,25 @@ class PineconeManager(VectorStoreInterface):
         self.s3_manager = S3Manager()
 
     def get_or_create_collection(self, index_name):
+        """Get existing Pinecone index or create new one.
+        
+        Args:
+            index_name (str): Name of the index
+            
+        Returns:
+            PineconeVectorStore: Vector store instance
+        """
         if index_name not in self.pc.list_indexes().names():
             self.pc.create_index(index_name, dimension=1536, metric="cosine")
         return PineconeVectorStore.from_existing_index(self.index_name, self.embeddings)
 
     def add_document(self, file_path, filter={"chat_session": 1}):
+        """Add a document to the vector store.
+        
+        Args:
+            file_path (str): Path to the document file
+            filter (dict, optional): Metadata filter for the document
+        """
         # tempFilePath = "temp/file.pdf"
         # self.s3_manager.downloadFile(document.s3_object_key, tempFilePath)
         documents = self.load(file_path)
@@ -47,6 +73,15 @@ class PineconeManager(VectorStoreInterface):
         # PineconeVectorStore.from_documents(docs, embeddings, index_name=self.index_name)
 
     def get_context(self, query, filter):
+        """Get relevant context based on query.
+        
+        Args:
+            query (str): Search query
+            filter (dict): Metadata filter for search
+            
+        Returns:
+            str: Template with context and query
+        """
         context = self.pcvs.similarity_search(query, filter=filter)
 
         template = f"""
@@ -58,11 +93,15 @@ class PineconeManager(VectorStoreInterface):
         return template
 
     def load(self, file_path):
-        """
-        Loads a document from the specified file path and appends it to the documents list.
-
+        """Load document from file path.
+        
+        Supports multiple file types including txt, pdf, docx, and csv.
+        
         Args:
-            file_path (str): The path to the document file to be loaded.
+            file_path (str): Path to the document file
+            
+        Returns:
+            list: Loaded documents
         """
         file_type = self.get_file_type(file_path)
 
@@ -88,14 +127,13 @@ class PineconeManager(VectorStoreInterface):
 
     @staticmethod
     def get_file_type(file_path):
-        """
-        Determines the file type based on the file extension.
-
+        """Get file extension from path.
+        
         Args:
-            file_path (str): The path to the file.
-
+            file_path (str): Path to the file
+            
         Returns:
-            str: The file type (txt, pdf, docx).
+            str: File extension without dot
         """
         _, ext = os.path.splitext(file_path)
         return ext[1:].lower()
