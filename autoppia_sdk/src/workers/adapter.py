@@ -88,5 +88,7 @@ class AIWorkerConfigAdapter:
             vectorstores=self.adapt_vector_stores(),
             llms=self.adapt_llms(),
             system_prompt=worker_config_dto.system_prompt.prompt if worker_config_dto.system_prompt else None,
-            name=worker_config_dto.name
+            name=worker_config_dto.name,
+            ip=worker_config_dto.ip,
+            port=worker_config_dto.port
         )
