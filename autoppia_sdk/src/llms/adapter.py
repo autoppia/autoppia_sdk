@@ -17,7 +17,7 @@ class LLMAdapter:
         """
         provider_type = self.llm_dto.llm_model.provider.provider_type.upper()
         api_key = self.llm_dto.api_key
-        model_name = self.llm_dto.llm_model.name
+        model_name = self.llm_dto.llm_model.name.lower()
 
         if not api_key:
             raise ValueError(f"Missing API key for {provider_type} provider")
