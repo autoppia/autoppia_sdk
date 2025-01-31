@@ -5,7 +5,21 @@ from autoppia_sdk.src.integrations.implementations.base import Integration
 
 
 class IntegrationConfigAdapter():
+    """
+    Adapter class for converting backend integration configuration data to IntegrationConfig objects.
+    """
+    
+    @staticmethod
     def from_autoppia_backend(worker_config_dto):
+        """
+        Converts backend worker configuration DTO to an IntegrationConfig object.
+
+        Args:
+            worker_config_dto: DTO containing integration configuration from the backend
+
+        Returns:
+            IntegrationConfig: Configuration object with integration name, category, and attributes
+        """
         # Convert attributes list to dictionary
         attributes = {}
         for attr in worker_config_dto.user_integration_attributes:
@@ -23,7 +37,15 @@ class IntegrationConfigAdapter():
         return integration_config
 
 class IntegrationsAdapter():
+    """
+    Adapter class for managing and instantiating integration implementations based on backend configuration.
+    """
+
     def __init__(self):
+        """
+        Initializes the adapter with a mapping of available integration implementations.
+        The mapping follows the structure: {category: {name: implementation_class}}
+        """
         self.integration_mapping = {
             "email": {
                 "Smtp": SMPTEmailIntegration
@@ -31,6 +53,16 @@ class IntegrationsAdapter():
         }
 
     def from_autoppia_backend(self, worker_config_dto):
+        """
+        Creates integration instances from backend worker configuration.
+
+        Args:
+            worker_config_dto: DTO containing integration configurations from the backend
+
+        Returns:
+            dict: Nested dictionary of instantiated integrations organized by category and name
+                 Structure: {category: {name: integration_instance}}
+        """
         integrations = {}
         for integration in worker_config_dto.user_integration:
             # Initialize category dict if not exists
