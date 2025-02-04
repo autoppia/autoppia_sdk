@@ -9,32 +9,25 @@ class WorkerRouter():
     """
 
     @classmethod
-    def from_id(cls, worker_id: str):
-        """Creates a WorkerRouter instance from a worker ID.
-
-        Args:
-            worker_id (str): The unique identifier of the worker.
-
-        Returns:
-            WorkerRouter: A new instance configured with the worker's IP and port.
-
-        Raises:
-            ValueError: If the configuration is missing IP or port.
-            Exception: If worker configuration fetch fails.
-        """
+    def from_id(cls, worker_id: int):
+        """Fetches worker IP and port from the info endpoint"""
         try:
-            # Initialize adapter with worker_id
-            adapter = AIWorkerConfigAdapter(worker_id)
+            payload = {
+                "SECRET": "ekwklrklkfewf3232nm",
+                "id": worker_id
+            }
+            response = requests.get("http://3.251.99.81/info", json=payload)
+            data = response.json()
+            print("data", data)
+            ip = data.get("ip")
+            port = data.get("port")
             
-            # Get worker configuration
-            worker_config = adapter.from_autoppia_user_backend()
-            
-            if not worker_config.ip or not worker_config.port:
-                raise ValueError("Invalid configuration: missing ip or port")
+            if not ip or not port:
+                raise ValueError("Invalid response: missing ip or port")
                 
-            return cls(worker_config.ip, worker_config.port)
+            return cls(ip, port)
         except Exception as e:
-            raise Exception(f"Failed to fetch worker config: {str(e)}")
+            raise Exception(f"Failed to fetch worker info: {str(e)}")
     
     def __init__(self, ip: str, port: int):
         """Initializes a WorkerRouter instance.

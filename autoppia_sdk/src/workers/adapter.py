@@ -1,9 +1,11 @@
 from typing import Optional, Dict, Any
-from autoppia_backend_client.models import EmbeddingDatabase as VectorStoreDTO
+from autoppia_backend_client.models import WorkerConfig as WorkerConfigDTO
 from autoppia_sdk.src.integrations.adapter import IntegrationsAdapter
 from autoppia_sdk.src.vectorstores.adapter import VectorStoreAdapter
 from autoppia_sdk.src.llms.adapter import LLMAdapter
 from autoppia_sdk.src.workers.interface import WorkerConfig
+
+
 
 
 class AIWorkerConfigAdapter:
@@ -18,7 +20,8 @@ class AIWorkerConfigAdapter:
     
     def __init__(self, worker_id: Optional[str] = None) -> None:
         self.worker_id = worker_id
-        self.worker_config_dto: Optional[VectorStoreDTO] = None
+        self.worker_config_dto: Optional[WorkerConfigDTO] = None
+
 
     def adapt_integrations(self) -> Dict[str, Any]:
         """Adapt integrations configuration from backend DTO.
@@ -65,7 +68,7 @@ class AIWorkerConfigAdapter:
         """Placeholder for toolkit adaptation (not implemented)."""
         raise NotImplementedError("Toolkit adaptation not yet implemented")
 
-    def from_autoppia_user_backend(self, worker_config_dto: VectorStoreDTO) -> WorkerConfig:
+    def from_autoppia_user_backend(self, worker_config_dto: WorkerConfigDTO) -> WorkerConfig:
         """Construct worker configuration from backend DTO with validation.
         
         Args:
