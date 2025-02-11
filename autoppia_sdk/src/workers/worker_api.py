@@ -56,7 +56,7 @@ class WorkerAPI:
             if self.worker:
                 self.worker.stop()
 
-        @self.app.post("/process")
+        @self.app.post("/call")
         def process_message(message: WorkerMessage):
             """
             Process a message using the worker.
