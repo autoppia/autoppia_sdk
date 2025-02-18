@@ -2,6 +2,7 @@ from autoppia_sdk.src.integrations.config import IntegrationConfig
 from autoppia_sdk.src.integrations.implementations.email.smtp_integration import SMPTEmailIntegration
 from autoppia_sdk.src.integrations.implementations.database.postgres_integration import PostgresIntegration
 from autoppia_sdk.src.integrations.implementations.api.api_integration import AutoppiaIntegration
+from autoppia_sdk.src.integrations.implementations.software.web_search_integration import WebSearchIntegration
 from autoppia_sdk.src.integrations.interface import IntegrationInterface
 from autoppia_sdk.src.integrations.implementations.base import Integration
 
@@ -57,6 +58,9 @@ class IntegrationsAdapter():
             },
             "api": {
                 "Autoppia": AutoppiaIntegration
+            },
+            "software": {
+                "Web Search": WebSearchIntegration
             }
         }
 
