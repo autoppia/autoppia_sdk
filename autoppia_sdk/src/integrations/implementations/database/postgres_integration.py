@@ -34,7 +34,7 @@ class PostgresIntegration(DatabaseIntegration, Integration):
     def execute_sql(
         self,
         sql: str,
-    ) -> Optional[str]:
+    ):
         """Execute SQL query on PostgreSQL database and return results.
         
         Args:
