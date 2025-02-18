@@ -6,6 +6,16 @@ import requests
 
 
 class WebSearchIntegration(Integration):
+    """Integration class for performing web searches using Google Custom Search API.
+
+    This class provides functionality to search the web using Google's Custom Search API.
+    It requires valid Google API credentials (API key and Search Engine ID) to function.
+
+    Attributes:
+        integration_config (IntegrationConfig): Configuration object containing integration settings
+        google_api_key (str): Google API key for authentication
+        google_search_engine_id (str): Google Custom Search Engine ID
+    """
     
     def __init__(self, integration_config: IntegrationConfig):
         
@@ -18,6 +28,21 @@ class WebSearchIntegration(Integration):
         query: str,
         num_results: int = 5
     ):
+        """Performs a web search using Google Custom Search API.
+
+        Args:
+            query (str): The search query string
+            num_results (int, optional): Number of search results to return. Defaults to 5.
+
+        Returns:
+            list[dict]: A list of dictionaries containing search results, each with:
+                - title: The title of the search result
+                - link: The URL of the search result
+                - snippet: A brief excerpt from the search result
+
+        Note:
+            Returns an empty list if the API request fails or if there's an error parsing the response.
+        """
         try:
             url = "https://www.googleapis.com/customsearch/v1"
             params = {
