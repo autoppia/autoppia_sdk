@@ -6,9 +6,24 @@ import psycopg2
 
 
 class PostgresIntegration(DatabaseIntegration, Integration):
+    """PostgreSQL database integration implementation.
     
+    This class provides functionality to interact with PostgreSQL databases,
+    implementing both DatabaseIntegration and Integration interfaces.
+    """
 
     def __init__(self, integration_config: IntegrationConfig):
+        """Initialize PostgreSQL integration with configuration parameters.
+        
+        Args:
+            integration_config (IntegrationConfig): Configuration object containing
+                connection parameters including:
+                - host: Database server hostname
+                - user: Database username
+                - port: Database port number
+                - dbname: Database name
+                - password: Database password
+        """
         self.integration_config = integration_config
         self.host = integration_config.attributes.get("host")
         self.user = integration_config.attributes.get("user")
@@ -20,7 +35,18 @@ class PostgresIntegration(DatabaseIntegration, Integration):
         self,
         sql: str,
     ) -> Optional[str]:
-       
+        """Execute SQL query on PostgreSQL database and return results.
+        
+        Args:
+            sql (str): SQL query to execute
+            
+        Returns:
+            Optional[str]: Query results if successful, None if an error occurs
+            
+        Note:
+            The connection is automatically closed after query execution,
+            regardless of success or failure.
+        """
         try:
             conn = psycopg2.connect(host=self.host, user=self.user, password=self._password, dbname=self.dbname)
             cursor = conn.cursor()
