@@ -2,10 +2,10 @@ from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 
 
-class SoftwareIntegration(ABC):
-    """Abstract base class for software integration implementations.
+class WebSearchIntegration(ABC):
+    """Abstract base class for web search integration implementations.
     
-    This class defines the interface for integrating with various software systems
+    This class defines the interface for integrating with various web search engines
     and APIs. Concrete implementations should inherit from this class and implement
     the required methods.
     """
@@ -16,7 +16,7 @@ class SoftwareIntegration(ABC):
         query: str,
         num_results: int = 5
     ):
-        """Makes a call to the software endpoint with the specified query.
+        """Makes a call to the web search endpoint with the specified query.
         
         Args:
             query (str): The search query or request to send to the endpoint.

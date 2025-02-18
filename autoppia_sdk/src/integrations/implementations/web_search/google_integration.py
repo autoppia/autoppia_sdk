@@ -5,7 +5,7 @@ from autoppia_sdk.src.integrations.implementations.base import Integration
 import requests
 
 
-class WebSearchIntegration(Integration):
+class GoogleIntegration(Integration):
     """Integration class for performing web searches using Google Custom Search API.
 
     This class provides functionality to search the web using Google's Custom Search API.
