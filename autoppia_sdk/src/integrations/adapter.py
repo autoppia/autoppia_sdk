@@ -57,7 +57,7 @@ class IntegrationsAdapter():
                 "Postgres": PostgresIntegration
             },
             "api": {
-                "Autoppia": AutoppiaIntegration
+                "API": AutoppiaIntegration
             },
             "web_search": {
                 "Google": GoogleIntegration
