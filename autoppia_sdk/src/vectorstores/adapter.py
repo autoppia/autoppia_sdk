@@ -43,7 +43,7 @@ class VectorStoreAdapter:
                 )
             case "PINECONE":
                 return PineconeManager(
-                    api_key=self.vector_store_dto.api_key,
+                    api_key=self.vector_store_dto.api_key.credential,
                     index_name=self.vector_store_dto.index_name
                 )
             case _:
