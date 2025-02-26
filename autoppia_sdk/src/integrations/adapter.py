@@ -54,7 +54,7 @@ class IntegrationsAdapter():
                 "Smtp": SMPTEmailIntegration
             },
             "database": {
-                "Postgres": PostgresIntegration
+                "PostgreSQL": PostgresIntegration
             },
             "api": {
                 "API": AutoppiaIntegration
