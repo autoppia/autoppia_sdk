@@ -2,6 +2,7 @@ from typing import Union
 from autoppia_backend_client.models import EmbeddingDatabase as VectorStoreDTO
 from autoppia_sdk.src.vectorstores.implementations.pinecone_manager import PineconeManager
 from autoppia_sdk.src.vectorstores.implementations.openai_manager import OpenAIManager
+import os
 
 
 class VectorStoreAdapter:
@@ -42,8 +43,12 @@ class VectorStoreAdapter:
                     vector_store_id=self.vector_store_dto.openai_vector_store_id
                 )
             case "PINECONE":
+
+                pinecone_api_key = self.vector_store_dto.api_key.credential
+                os.environ["PINECONE_API_KEY"] = pinecone_api_key
+                
                 return PineconeManager(
-                    api_key=self.vector_store_dto.api_key.credential,
+                    api_key=pinecone_api_key,
                     index_name=self.vector_store_dto.index_name
                 )
             case _:

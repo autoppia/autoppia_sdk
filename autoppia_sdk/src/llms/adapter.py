@@ -31,7 +31,7 @@ class LLMAdapter:
             ValueError: If required API key is missing
         """
         provider_type = self.llm_dto.llm_model.provider.provider_type.upper()
-        api_key = self.llm_dto.api_key
+        api_key = self.llm_dto.api_key.credential
         model_name = self.llm_dto.llm_model.name.lower()
 
         if not api_key:
