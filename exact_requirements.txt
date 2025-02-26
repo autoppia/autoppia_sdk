@@ -127,3 +127,5 @@ langchain-pinecone
 langchain-openai
 langchain
 langsmith
+langchain-community
+
