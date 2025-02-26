@@ -125,7 +125,7 @@ psycopg2
 pinecone
 langchain-pinecone
 langchain-openai
+langchain-anthropic
 langchain
 langsmith
 langchain-community
-
