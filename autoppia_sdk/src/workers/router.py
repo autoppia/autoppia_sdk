@@ -18,7 +18,6 @@ class WorkerRouter():
             }
             response = requests.get("http://3.251.99.81/info", json=payload)
             data = response.json()
-            print("data", data)
             ip = data.get("ip")
             port = data.get("port")
             
@@ -55,7 +54,7 @@ class WorkerRouter():
             Exception: If the worker call fails or returns an error status.
         """
         try:
-            url = f"http://{self.ip}:{self.port}/process"
+            url = f"http://{self.ip}:{self.port}/call"
             response = requests.post(url, json={"message": message})
             response.raise_for_status()  # Raise an exception for bad status codes
             
