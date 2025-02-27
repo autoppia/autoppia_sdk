@@ -46,6 +46,7 @@ class VectorStoreAdapter:
 
                 pinecone_api_key = self.vector_store_dto.api_key.credential
                 os.environ["PINECONE_API_KEY"] = pinecone_api_key
+                os.environ["OPENAI_API_KEY"] = self.vector_store_dto.embedding_api_key.credential
                 
                 return PineconeManager(
                     api_key=pinecone_api_key,
