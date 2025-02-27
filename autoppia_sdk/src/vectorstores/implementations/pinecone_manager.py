@@ -72,7 +72,7 @@ class PineconeManager(VectorStoreInterface):
         )
         # PineconeVectorStore.from_documents(docs, embeddings, index_name=self.index_name)
 
-    def get_context(self, query, filter):
+    def get_context(self, query, filter=None):
         """Get relevant context based on query.
         
         Args:
@@ -82,7 +82,10 @@ class PineconeManager(VectorStoreInterface):
         Returns:
             str: Template with context and query
         """
-        context = self.pcvs.similarity_search(query, filter=filter)
+        if filter:
+            context = self.pcvs.similarity_search(query, filter=filter)
+        else:
+            context = self.pcvs.similarity_search(query)
 
         template = f"""
             Following Context is data of PDF that user want to know about information of.
