@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 class WorkerMessage(BaseModel):
@@ -15,7 +15,7 @@ class WorkerAPI:
     """
     FastAPI wrapper for worker implementations.
     
-    This class provides a REST API interface for worker operations including
+    This class provides a WebSocket interface for worker operations including
     health checks and message processing.
     
     Attributes:
@@ -37,10 +37,10 @@ class WorkerAPI:
 
     def setup_routes(self):
         """
-        Configure API routes and event handlers.
+        Configure API routes, WebSocket endpoints, and event handlers.
         
-        Sets up the following endpoints:
-        - POST /process: Process a message
+        Sets up the following:
+        - WebSocket /ws: WebSocket endpoint for message processing
         - GET /health: Check worker health
         
         And event handlers:
@@ -56,28 +56,37 @@ class WorkerAPI:
             if self.worker:
                 self.worker.stop()
 
-        @self.app.post("/call")
-        def process_message(message: WorkerMessage):
+        @self.app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):
             """
-            Process a message using the worker.
+            WebSocket endpoint for processing messages.
             
             Args:
-                message (WorkerMessage): The message to process
-                
-            Returns:
-                dict: Contains the processing result
-                
-            Raises:
-                HTTPException: If worker is not initialized or processing fails
+                websocket (WebSocket): The WebSocket connection
             """
-            if not self.worker:
-                raise HTTPException(status_code=500, detail="Worker not initialized")
-
+            await websocket.accept()
+            
             try:
-                result = self.worker.call(message.message)
-                return {"result": result}
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                while True:
+                    # Receive message from client
+                    data = await websocket.receive_json()
+                    
+                    if not self.worker:
+                        await websocket.send_json({"error": "Worker not initialized"})
+                        continue
+                    
+                    try:
+                        # Process the message
+                        message = data.get("message", "")
+                        result = self.worker.call(message)
+                        
+                        # Send result back to client
+                        await websocket.send_json({"result": result})
+                    except Exception as e:
+                        await websocket.send_json({"error": str(e)})
+            except WebSocketDisconnect:
+                # Handle client disconnect
+                pass
 
         @self.app.get("/health")
         async def health_check():
