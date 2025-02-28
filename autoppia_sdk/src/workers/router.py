@@ -1,8 +1,10 @@
+import json
 import requests
+from websockets.sync.client import connect
 from autoppia_sdk.src.workers.adapter import AIWorkerConfigAdapter
 
 class WorkerRouter():
-    """A router class for handling communication with AI workers.
+    """A router class for handling communication with AI workers via WebSocket.
 
     This class manages the routing and communication with AI worker instances,
     handling configuration retrieval and message processing.
@@ -18,6 +20,7 @@ class WorkerRouter():
             }
             response = requests.get("http://3.251.99.81/info", json=payload)
             data = response.json()
+            print("data", data)
             ip = data.get("ip")
             port = data.get("port")
             
@@ -37,11 +40,12 @@ class WorkerRouter():
         """
         self.ip = ip
         self.port = port
+        self.ws_url = f"ws://{self.ip}:{self.port}/ws"
     
     def call(self, message: str):
-        """Sends a message to the worker for processing.
+        """Sends a message to the worker for processing via WebSocket.
 
-        Makes a POST request to the worker's endpoint with the provided message
+        Establishes a WebSocket connection to the worker's endpoint, sends the provided message,
         and returns the processed result.
 
         Args:
@@ -51,15 +55,16 @@ class WorkerRouter():
             Any: The processed result from the worker.
 
         Raises:
-            Exception: If the worker call fails or returns an error status.
+            Exception: If the WebSocket connection fails or returns an error.
         """
         try:
-            url = f"http://{self.ip}:{self.port}/call"
-            response = requests.post(url, json={"message": message})
-            response.raise_for_status()  # Raise an exception for bad status codes
-            
-            return response.json()["result"]
+            with connect(self.ws_url) as websocket:
+                # Send the message
+                websocket.send(json.dumps({"message": message}))
+                
+                # Receive the response
+                response = json.loads(websocket.recv())
+                
+                return response["result"]
         except Exception as e:
-            raise Exception(f"Failed to call worker: {str(e)}")
-        
-    
+            raise Exception(f"Failed to call worker via WebSocket: {str(e)}")
