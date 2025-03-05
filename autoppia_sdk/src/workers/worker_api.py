@@ -59,7 +59,7 @@ class WorkerAPI:
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             """
-            WebSocket endpoint for processing messages.
+            WebSocket endpoint for processing messages with streaming support.
             
             Args:
                 websocket (WebSocket): The WebSocket connection
@@ -78,10 +78,43 @@ class WorkerAPI:
                     try:
                         # Process the message
                         message = data.get("message", "")
-                        result = self.worker.call(message)
                         
-                        # Send result back to client
-                        await websocket.send_json({"result": result})
+                        # Check if the worker supports streaming
+                        if hasattr(self.worker, 'call_stream'):
+                            # Define a callback function to send streaming messages
+                            async def send_streaming_message(msg):
+                                try:
+                                    # Format the message based on its type
+                                    if isinstance(msg, str):
+                                        await websocket.send_json({"stream": msg})
+                                    elif isinstance(msg, dict):
+                                        # Handle different message types
+                                        if msg.get("type") == "text" and msg.get("role") == "assistant":
+                                            await websocket.send_json({"stream": msg.get("text", "")})
+                                        elif msg.get("type") == "task":
+                                            # For tool execution messages
+                                            await websocket.send_json({
+                                                "tool": {
+                                                    "title": msg.get("title", ""),
+                                                    "text": msg.get("text", ""),
+                                                    "icon": msg.get("icon", False)
+                                                }
+                                            })
+                                        else:
+                                            # For other message types
+                                            await websocket.send_json({"stream": str(msg)})
+                                except Exception as e:
+                                    print(f"Error sending streaming message: {e}")
+                            
+                            # Use streaming call
+                            self.worker.call_stream(message, send_streaming_message)
+                            
+                            # Send completion message
+                            await websocket.send_json({"complete": True})
+                        else:
+                            # Fallback to non-streaming call
+                            result = self.worker.call(message)
+                            await websocket.send_json({"result": result})
                     except Exception as e:
                         await websocket.send_json({"error": str(e)})
             except WebSocketDisconnect:
