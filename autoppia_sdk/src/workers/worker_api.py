@@ -204,7 +204,8 @@ class WorkerAPI:
                 port=self.port,
                 debug=False,
                 use_reloader=False,
-                log_output=True
+                log_output=True,
+                allow_unsafe_werkzeug=True
             )
         )
         self.server_thread.daemon = True
