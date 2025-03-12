@@ -129,3 +129,5 @@ langchain-anthropic
 langchain
 langsmith
 langchain-community
+flask
+flask-socketio
