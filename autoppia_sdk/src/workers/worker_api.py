@@ -1,10 +1,13 @@
 from typing import Optional, Dict, Any, Set
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 import json
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
+import flask_socketio
+import os
+from werkzeug.utils import secure_filename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -40,14 +43,64 @@ class WorkerAPI:
         self.executor = ThreadPoolExecutor()
         self._running = False
         self.active_connections = set()  # Track active connections
+        
+        # File upload configuration
+        self.app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
+        self.app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+        os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
 
         # Register event handlers
         self.socketio.on_event('connect', self.handle_connect)
         self.socketio.on_event('disconnect', self.handle_disconnect)
         self.socketio.on_event('message', self.handle_message)
         
+        # Register HTTP routes
+        self.register_http_routes()
+        
         # Set up heartbeat task
         self.setup_heartbeat()
+
+    def register_http_routes(self):
+        """Register HTTP routes for the Flask app"""
+        
+        @self.app.route('/upload', methods=['POST'])
+        def upload_file():
+            """Handle file uploads via HTTP POST"""
+            logger.info(f"File upload request received from {request.remote_addr}")
+            
+            # Check if any file was included in the request
+            if 'file' not in request.files:
+                logger.warning("No file part in the request")
+                return jsonify({'error': 'No file part'}), 400
+                
+            files = request.files.getlist('file')
+            
+            if not files or files[0].filename == '':
+                logger.warning("No file selected")
+                return jsonify({'error': 'No file selected'}), 400
+            
+            # Process all uploaded files
+            uploaded_files = []
+            for file in files:
+                if file:
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(self.app.config['UPLOAD_FOLDER'], filename)
+                    file.save(filepath)
+                    logger.info(f"File saved: {filepath}")
+                    uploaded_files.append(filename)
+                    
+                    # If worker implements a file_uploaded method, call it
+                    if hasattr(self.worker, 'file_uploaded'):
+                        try:
+                            self.worker.file_uploaded(filepath)
+                        except Exception as e:
+                            logger.error(f"Error processing uploaded file with worker: {e}", exc_info=True)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Successfully uploaded {len(uploaded_files)} file(s)',
+                'files': uploaded_files
+            })
 
     def handle_connect(self, auth=None):
         """Handle new client connections"""
