@@ -131,3 +131,5 @@ langsmith
 langchain-community
 flask
 flask-socketio
+eventlet
+gevent
