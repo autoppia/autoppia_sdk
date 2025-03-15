@@ -239,8 +239,12 @@ class WorkerAPI:
         self.heartbeat_thread = threading.Thread(target=send_heartbeats)
         self.heartbeat_thread.daemon = True
 
-    def start(self):
-        """Start the WebSocket server"""
+    def start(self, production_mode=False):
+        """Start the WebSocket server
+        
+        Args:
+            production_mode (bool): If True, use production WSGI server
+        """
         self._running = True
         self.worker.start()
         logger.info("Worker started")
@@ -249,21 +253,70 @@ class WorkerAPI:
         self.heartbeat_thread.start()
         logger.info("Heartbeat thread started")
         
-        # Run the server in a separate thread
-        self.server_thread = threading.Thread(
-            target=lambda: self.socketio.run(
-                self.app, 
-                host=self.host, 
-                port=self.port,
-                debug=False,
-                use_reloader=False,
-                log_output=True,
-                allow_unsafe_werkzeug=True
+        if production_mode:
+            self._start_production_server()
+        else:
+            # Development mode - run the server in a separate thread using Flask's dev server
+            self.server_thread = threading.Thread(
+                target=lambda: self.socketio.run(
+                    self.app, 
+                    host=self.host, 
+                    port=self.port,
+                    debug=False,
+                    use_reloader=False,
+                    log_output=True,
+                    allow_unsafe_werkzeug=True
+                )
             )
-        )
+            self.server_thread.daemon = True
+            self.server_thread.start()
+            logger.info(f"Worker API development server started on http://{self.host}:{self.port}")
+
+    def _start_production_server(self):
+        """Start the server using a production-ready WSGI server with SocketIO support"""
+        try:
+            import eventlet
+            eventlet.monkey_patch()
+            logger.info("Using eventlet for production server")
+            self.server_thread = threading.Thread(
+                target=lambda: eventlet.wsgi.server(
+                    eventlet.listen((self.host, self.port)), 
+                    self.socketio.wsgi_app
+                )
+            )
+        except ImportError:
+            try:
+                import gevent
+                import gevent.pywsgi
+                from gevent import monkey
+                monkey.patch_all()
+                logger.info("Using gevent for production server")
+                from gevent.pywsgi import WSGIServer
+                self.server = WSGIServer(
+                    (self.host, self.port),
+                    self.socketio.wsgi_app
+                )
+                self.server_thread = threading.Thread(
+                    target=lambda: self.server.serve_forever()
+                )
+            except ImportError:
+                logger.warning("Neither eventlet nor gevent found, falling back to development server")
+                # Fall back to development server
+                self.server_thread = threading.Thread(
+                    target=lambda: self.socketio.run(
+                        self.app, 
+                        host=self.host, 
+                        port=self.port,
+                        debug=False,
+                        use_reloader=False,
+                        log_output=True,
+                        allow_unsafe_werkzeug=True
+                    )
+                )
+        
         self.server_thread.daemon = True
         self.server_thread.start()
-        logger.info(f"Worker API server started on http://{self.host}:{self.port}")
+        logger.info(f"Worker API production server started on http://{self.host}:{self.port}")
 
     def stop(self):
         """Stop the WebSocket server"""
