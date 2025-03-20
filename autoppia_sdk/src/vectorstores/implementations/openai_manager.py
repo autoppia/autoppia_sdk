@@ -36,15 +36,35 @@ class OpenAIManager(VectorStoreInterface):
         else:
             return self.client.beta.vector_stores.create(name=self.index_name)
 
-    def add_document(self, file_id):
+    def add_document(self, file_path):
         """Add a document to the vector store.
         
         Args:
-            file_id (str): ID of the file to add
+            file_path (str): Path to the document file
         """
-        self.client.beta.vector_stores.files.create(
-            vector_store_id=self.vector_store_id, file_id=file_id
-        )
+        # Get or create the vector store if not already set
+        if not self.vector_store_id:
+            vector_store = self.get_or_create_collection()
+            self.vector_store_id = vector_store.id
+        
+        # Upload the file to OpenAI
+        try:
+            with open(file_path, 'rb') as file:
+                file_upload = self.client.files.create(
+                    file=file,
+                    purpose="assistants"
+                )
+                file_id = file_upload.id
+                
+                # Add the file to the vector store
+                self.client.beta.vector_stores.files.create(
+                    vector_store_id=self.vector_store_id, 
+                    file_id=file_id
+                )
+                
+                return file_id
+        except Exception as e:
+            raise Exception(f"Error adding document to OpenAI vector store: {str(e)}")
 
     def get_context(self):
         pass

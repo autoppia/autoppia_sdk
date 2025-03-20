@@ -7,7 +7,6 @@ import threading
 import logging
 import flask_socketio
 import os
-from werkzeug.utils import secure_filename
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -81,24 +80,46 @@ class WorkerAPI:
             
             # Process all uploaded files
             uploaded_files = []
+            file_paths = []
             for file in files:
                 if file:
-                    filename = secure_filename(file.filename)
+                    filename = file.filename
                     filepath = os.path.join(self.app.config['UPLOAD_FOLDER'], filename)
                     file.save(filepath)
                     logger.info(f"File saved: {filepath}")
                     uploaded_files.append(filename)
+                    file_paths.append(filepath)
                     
-                    # If worker implements a file_uploaded method, call it
-                    if hasattr(self.worker, 'file_uploaded'):
+            # Process files with worker
+            try:
+                # If worker implements a file_uploaded method, call it
+                if hasattr(self.worker, 'file_uploaded'):
+                    for filepath in file_paths:
                         try:
                             self.worker.file_uploaded(filepath)
                         except Exception as e:
                             logger.error(f"Error processing uploaded file with worker: {e}", exc_info=True)
+                
+                # If worker has a vectorstore attribute, add documents to it
+                if hasattr(self.worker, 'vectorstore') and self.worker.vectorstore:
+                    for filepath in file_paths:
+                        try:
+                            logger.info(f"Adding file to vector store: {filepath}")
+                            self.worker.vectorstore.add_document(filepath)
+                            logger.info(f"Successfully added file to vector store: {filepath}")
+                        except Exception as e:
+                            logger.error(f"Error adding file to vector store: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Error processing files: {e}", exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'message': f'Error processing files: {str(e)}',
+                    'files': uploaded_files
+                }), 500
             
             return jsonify({
                 'success': True,
-                'message': f'Successfully uploaded {len(uploaded_files)} file(s)',
+                'message': f'Successfully uploaded and processed {len(uploaded_files)} file(s)',
                 'files': uploaded_files
             })
 
