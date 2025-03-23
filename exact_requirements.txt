@@ -133,4 +133,3 @@ flask
 flask-socketio
 eventlet
 gevent
-modelcontextprotocol
