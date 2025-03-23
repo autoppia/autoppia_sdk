@@ -1,12 +1,10 @@
 from typing import Optional, Dict, Any, Set
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit
+import socketio
 import json
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
-import flask_socketio
-import os
+import eventlet
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -15,15 +13,14 @@ logger = logging.getLogger("WorkerAPI")
 
 class WorkerAPI:
     """
-    WebSocket server wrapper for worker implementations using Flask-SocketIO.
+    WebSocket server wrapper for worker implementations using Python-SocketIO.
     
     This class provides a WebSocket interface for worker operations including
     message processing with synchronous sending capability.
     
     Attributes:
         worker: The worker instance that handles message processing
-        socketio: The Flask-SocketIO server instance
-        app: The Flask application instance
+        sio: The SocketIO server instance
     """
     def __init__(self, worker, host="localhost", port=8000):
         """
@@ -37,108 +34,41 @@ class WorkerAPI:
         self.worker = worker
         self.host = host
         self.port = port
-        self.app = Flask(__name__)
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.sio = socketio.Server(cors_allowed_origins="*")
+        self.app = socketio.WSGIApp(self.sio)
         self.executor = ThreadPoolExecutor()
         self._running = False
         self.active_connections = set()  # Track active connections
-        
-        # File upload configuration
-        self.app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
-        self.app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-        os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
 
         # Register event handlers
-        self.socketio.on_event('connect', self.handle_connect)
-        self.socketio.on_event('disconnect', self.handle_disconnect)
-        self.socketio.on_event('message', self.handle_message)
-        
-        # Register HTTP routes
-        self.register_http_routes()
+        self.sio.on('connect', self.handle_connect)
+        self.sio.on('disconnect', self.handle_disconnect)
+        self.sio.on('message', self.handle_message)
+        self.sio.on('ping', self.handle_ping)
         
         # Set up heartbeat task
         self.setup_heartbeat()
 
-    def register_http_routes(self):
-        """Register HTTP routes for the Flask app"""
-        
-        @self.app.route('/upload', methods=['POST'])
-        def upload_file():
-            """Handle file uploads via HTTP POST"""
-            logger.info(f"File upload request received from {request.remote_addr}")
-            
-            # Check if any file was included in the request
-            if 'file' not in request.files:
-                logger.warning("No file part in the request")
-                return jsonify({'error': 'No file part'}), 400
-                
-            files = request.files.getlist('file')
-            
-            if not files or files[0].filename == '':
-                logger.warning("No file selected")
-                return jsonify({'error': 'No file selected'}), 400
-            
-            # Process all uploaded files
-            uploaded_files = []
-            file_paths = []
-            for file in files:
-                if file:
-                    filename = file.filename
-                    filepath = os.path.join(self.app.config['UPLOAD_FOLDER'], filename)
-                    file.save(filepath)
-                    logger.info(f"File saved: {filepath}")
-                    uploaded_files.append(filename)
-                    file_paths.append(filepath)
-                    
-            # Process files with worker
-            try:
-                # If worker implements a file_uploaded method, call it
-                if hasattr(self.worker, 'file_uploaded'):
-                    for filepath in file_paths:
-                        try:
-                            self.worker.file_uploaded(filepath)
-                        except Exception as e:
-                            logger.error(f"Error processing uploaded file with worker: {e}", exc_info=True)
-                
-                # If worker has a vectorstore attribute, add documents to it
-                if hasattr(self.worker, 'vectorstore') and self.worker.vectorstore:
-                    for filepath in file_paths:
-                        try:
-                            logger.info(f"Adding file to vector store: {filepath}")
-                            self.worker.vectorstore.add_document(filepath)
-                            logger.info(f"Successfully added file to vector store: {filepath}")
-                        except Exception as e:
-                            logger.error(f"Error adding file to vector store: {e}", exc_info=True)
-            except Exception as e:
-                logger.error(f"Error processing files: {e}", exc_info=True)
-                return jsonify({
-                    'success': False,
-                    'message': f'Error processing files: {str(e)}',
-                    'files': uploaded_files
-                }), 500
-            
-            return jsonify({
-                'success': True,
-                'message': f'Successfully uploaded and processed {len(uploaded_files)} file(s)',
-                'files': uploaded_files
-            })
-
-    def handle_connect(self, auth=None):
+    def handle_connect(self, sid, environ, auth=None):
         """Handle new client connections"""
-        client_id = request.sid
+        client_id = sid
         self.active_connections.add(client_id)
         logger.info(f"New client connected: {client_id}. Active connections: {len(self.active_connections)}")
 
-    def handle_disconnect(self, sid=None):
+    def handle_disconnect(self, sid):
         """Handle client disconnections"""
-        client_id = sid  # Use the session ID passed by Flask-SocketIO
+        client_id = sid
         if client_id in self.active_connections:
             self.active_connections.remove(client_id)
         logger.info(f"Client disconnected: {client_id}. Active connections: {len(self.active_connections)}")
 
-    def handle_message(self, data):
+    def handle_ping(self, sid):
+        """Handle ping events"""
+        return {'pong': True}
+
+    def handle_message(self, sid, data):
         """Handle messages from clients"""
-        client_id = request.sid
+        client_id = sid
         
         try:
             if not isinstance(data, dict):
@@ -146,19 +76,19 @@ class WorkerAPI:
                     data = json.loads(data)
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON received: {e}")
-                    self.socketio.emit('error', {"error": f"Invalid JSON: {str(e)}"}, room=client_id)
+                    self.sio.emit('error', {"error": f"Invalid JSON: {str(e)}"}, room=client_id)
                     return
             
             if not self.worker:
                 logger.error("Worker not initialized")
-                self.socketio.emit('error', {"error": "Worker not initialized"}, room=client_id)
+                self.sio.emit('error', {"error": "Worker not initialized"}, room=client_id)
                 return
             
             message = data.get("message", "")
             logger.info(f"Received message from {client_id}: {message[:50]}...")
             
             # Acknowledge receipt
-            self.socketio.emit('response', {"response": "Hello! I received your message"}, room=client_id)
+            self.sio.emit('response', {"response": "Hello! I received your message"}, room=client_id)
             
             # Check if the worker supports streaming
             if hasattr(self.worker, 'call_stream'):
@@ -178,9 +108,9 @@ class WorkerAPI:
                 # Send completion message
                 try:
                     if result is not None:
-                        self.socketio.emit('complete', {"complete": True, "result": result}, room=client_id)
+                        self.sio.emit('complete', {"complete": True, "result": result}, room=client_id)
                     else:
-                        self.socketio.emit('complete', {"complete": True}, room=client_id)
+                        self.sio.emit('complete', {"complete": True}, room=client_id)
                     logger.info("Streaming call completed")
                 except Exception as e:
                     logger.error(f"Error sending completion message: {e}")
@@ -188,12 +118,12 @@ class WorkerAPI:
                 # Fallback to non-streaming call
                 logger.info("Starting non-streaming call")
                 result = self.worker.call(message)
-                self.socketio.emit('result', {"result": result}, room=client_id)
+                self.sio.emit('result', {"result": result}, room=client_id)
                 logger.info("Non-streaming call completed")
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
             try:
-                self.socketio.emit('error', {"error": str(e)}, room=client_id)
+                self.sio.emit('error', {"error": str(e)}, room=client_id)
             except Exception as send_err:
                 logger.error(f"Error sending error message: {send_err}")
 
@@ -207,13 +137,13 @@ class WorkerAPI:
             # Format the message based on its type
             if isinstance(msg, str):
                 # For string messages, just send as stream
-                self.socketio.emit('stream', {"stream": msg}, room=client_id)
+                self.sio.emit('stream', {"stream": msg}, room=client_id)
                 logger.debug(f"Sent string message: {msg[:50]}...")
             elif isinstance(msg, dict):
                 # For dict messages, format based on type
                 if msg.get("type") == "text" and msg.get("role") == "assistant":
                     # Send the full message
-                    self.socketio.emit('message', msg, room=client_id)
+                    self.sio.emit('message', msg, room=client_id)
                     logger.debug(f"Sent assistant text message: {msg.get('text', '')[:50]}...")
                 elif msg.get("type") == "task":
                     # Format tool/task messages
@@ -224,11 +154,11 @@ class WorkerAPI:
                             "icon": msg.get("icon", False)
                         }
                     }
-                    self.socketio.emit('tool', tool_msg, room=client_id)
+                    self.sio.emit('tool', tool_msg, room=client_id)
                     logger.debug(f"Sent task message: {msg.get('title', '')}")
                 else:
                     # Default case for other dict messages
-                    self.socketio.emit('stream', {"stream": str(msg)}, room=client_id)
+                    self.sio.emit('stream', {"stream": str(msg)}, room=client_id)
                     logger.debug(f"Sent generic dict message")
                 
             # Add a debug confirmation after successful sending
@@ -242,16 +172,12 @@ class WorkerAPI:
 
     def setup_heartbeat(self):
         """Set up a heartbeat event to keep connections alive"""
-        @self.socketio.on('ping')
-        def handle_ping():
-            return {'pong': True}
-            
         def send_heartbeats():
             """Background task to send heartbeats to all clients"""
             while self._running:
                 for client_id in list(self.active_connections):
                     try:
-                        self.socketio.emit('heartbeat', {"heartbeat": True}, room=client_id)
+                        self.sio.emit('heartbeat', {"heartbeat": True}, room=client_id)
                         logger.debug(f"Heartbeat sent to {client_id}")
                     except Exception as e:
                         logger.warning(f"Failed to send heartbeat to {client_id}: {e}")
@@ -260,12 +186,8 @@ class WorkerAPI:
         self.heartbeat_thread = threading.Thread(target=send_heartbeats)
         self.heartbeat_thread.daemon = True
 
-    def start(self, production_mode=False):
-        """Start the WebSocket server
-        
-        Args:
-            production_mode (bool): If True, use production WSGI server
-        """
+    def start(self):
+        """Start the WebSocket server"""
         self._running = True
         self.worker.start()
         logger.info("Worker started")
@@ -274,70 +196,9 @@ class WorkerAPI:
         self.heartbeat_thread.start()
         logger.info("Heartbeat thread started")
         
-        if production_mode:
-            self._start_production_server()
-        else:
-            # Development mode - run the server in a separate thread using Flask's dev server
-            self.server_thread = threading.Thread(
-                target=lambda: self.socketio.run(
-                    self.app, 
-                    host=self.host, 
-                    port=self.port,
-                    debug=False,
-                    use_reloader=False,
-                    log_output=True,
-                    allow_unsafe_werkzeug=True
-                )
-            )
-            self.server_thread.daemon = True
-            self.server_thread.start()
-            logger.info(f"Worker API development server started on http://{self.host}:{self.port}")
-
-    def _start_production_server(self):
-        """Start the server using a production-ready WSGI server with SocketIO support"""
-        try:
-            import eventlet
-            eventlet.monkey_patch()
-            logger.info("Using eventlet for production server")
-            self.server_thread = threading.Thread(
-                target=lambda: eventlet.wsgi.server(
-                    eventlet.listen((self.host, self.port)), 
-                    self.socketio.wsgi_app
-                )
-            )
-        except ImportError:
-            try:
-                import gevent
-                import gevent.pywsgi
-                from gevent import monkey
-                monkey.patch_all()
-                logger.info("Using gevent for production server")
-                from gevent.pywsgi import WSGIServer
-                self.server = WSGIServer(
-                    (self.host, self.port),
-                    self.socketio.wsgi_app
-                )
-                self.server_thread = threading.Thread(
-                    target=lambda: self.server.serve_forever()
-                )
-            except ImportError:
-                logger.warning("Neither eventlet nor gevent found, falling back to development server")
-                # Fall back to development server
-                self.server_thread = threading.Thread(
-                    target=lambda: self.socketio.run(
-                        self.app, 
-                        host=self.host, 
-                        port=self.port,
-                        debug=False,
-                        use_reloader=False,
-                        log_output=True,
-                        allow_unsafe_werkzeug=True
-                    )
-                )
-        
-        self.server_thread.daemon = True
-        self.server_thread.start()
-        logger.info(f"Worker API production server started on http://{self.host}:{self.port}")
+        # Run the server
+        logger.info(f"Worker API server starting on http://{self.host}:{self.port}")
+        eventlet.wsgi.server(eventlet.listen((self.host, self.port)), self.app)
 
     def stop(self):
         """Stop the WebSocket server"""
@@ -350,12 +211,6 @@ class WorkerAPI:
                 logger.info("Worker stopped")
             except Exception as e:
                 logger.error(f"Error stopping worker: {e}")
-        
-        try:
-            self.socketio.stop()
-            logger.info("SocketIO server stopped")
-        except Exception as e:
-            logger.error(f"Error stopping SocketIO server: {e}")
         
         try:
             self.executor.shutdown(wait=False)
