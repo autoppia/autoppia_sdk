@@ -4,7 +4,9 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import logging
-import eventlet
+import gevent
+from gevent import pywsgi
+from geventwebsocket.handler import WebSocketHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -196,9 +198,14 @@ class WorkerAPI:
         self.heartbeat_thread.start()
         logger.info("Heartbeat thread started")
         
-        # Run the server
+        # Run the server with gevent instead of eventlet
         logger.info(f"Worker API server starting on http://{self.host}:{self.port}")
-        eventlet.wsgi.server(eventlet.listen((self.host, self.port)), self.app)
+        server = pywsgi.WSGIServer(
+            (self.host, self.port),
+            self.app,
+            handler_class=WebSocketHandler
+        )
+        server.serve_forever()
 
     def stop(self):
         """Stop the WebSocket server"""
