@@ -102,7 +102,7 @@ class WorkerRouter():
                     logger.info(f"Received streaming content: {stream_content[:100]}...")
                     if stream_callback:
                         try:
-                            stream_callback(stream_content)
+                            stream_callback(json.loads(stream_content))
                         except Exception as e:
                             logger.error(f"Error in stream callback: {e}")
                 
