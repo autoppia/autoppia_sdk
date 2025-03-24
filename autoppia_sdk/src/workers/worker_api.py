@@ -36,7 +36,7 @@ class WorkerAPI:
         self.worker = worker
         self.host = host
         self.port = port
-        self.sio = socketio.Server(cors_allowed_origins="*")
+        self.sio = socketio.Server(cors_allowed_origins="*", async_mode='gevent')
         self.app = socketio.WSGIApp(self.sio)
         self.executor = ThreadPoolExecutor()
         self._running = False
