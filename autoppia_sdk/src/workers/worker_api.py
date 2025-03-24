@@ -36,7 +36,7 @@ class WorkerAPI:
         self.worker = worker
         self.host = host
         self.port = port
-        self.sio = socketio.Server(cors_allowed_origins="*", async_mode='gevent')
+        self.sio = socketio.Server(cors_allowed_origins="*", async_mode='threading')
         self.app = socketio.WSGIApp(self.sio)
         self.executor = ThreadPoolExecutor()
         self._running = False
@@ -198,13 +198,10 @@ class WorkerAPI:
         self.heartbeat_thread.start()
         logger.info("Heartbeat thread started")
         
-        # Run the server with gevent instead of eventlet
+        # Use the standard WSGI server with threading mode
         logger.info(f"Worker API server starting on http://{self.host}:{self.port}")
-        server = pywsgi.WSGIServer(
-            (self.host, self.port),
-            self.app,
-            handler_class=WebSocketHandler
-        )
+        from wsgiref.simple_server import make_server
+        server = make_server(self.host, self.port, self.app)
         server.serve_forever()
 
     def stop(self):
