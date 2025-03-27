@@ -70,15 +70,20 @@ class WorkerRouter():
             try:
                 logger.info(f"Connecting to worker at {self.socketio_url} (attempt {retry_count+1}/{max_retries})")
                 
-                # Create a new Socket.IO client
-                sio = socketio.Client(reconnection=True, reconnection_attempts=3, 
-                                     reconnection_delay=1, reconnection_delay_max=5)
+                # Create a new Socket.IO client with improved reconnection settings
+                sio = socketio.Client(reconnection=True, reconnection_attempts=5, 
+                                     reconnection_delay=1, reconnection_delay_max=5,
+                                     logger=logger, engineio_logger=False)
                 final_result = None
                 request_completed = False
+                connection_established = False
+                connection_error = None
                 
                 # Set up event handlers
                 @sio.event
                 def connect():
+                    nonlocal connection_established
+                    connection_established = True
                     logger.info("Connected to SocketIO server")
                     # Send the message after connection is established
                     sio.emit('message', {"message": message})
@@ -86,11 +91,16 @@ class WorkerRouter():
                 
                 @sio.event
                 def connect_error(data):
+                    nonlocal connection_error
+                    connection_error = data
                     logger.error(f"Connection error: {data}")
                 
                 @sio.event
                 def disconnect():
                     logger.info("Disconnected from SocketIO server")
+                    # Only raise an exception if we haven't completed the request
+                    if not request_completed:
+                        logger.warning("Disconnected before request completion")
                 
                 @sio.on('response')
                 def on_response(data):
@@ -102,16 +112,27 @@ class WorkerRouter():
                     logger.info(f"Received streaming content: {stream_content[:100]}...")
                     if stream_callback:
                         try:
-                            stream_callback(json.loads(stream_content))
+                            # Handle both JSON and string formats
+                            if isinstance(stream_content, str):
+                                try:
+                                    parsed_content = json.loads(stream_content)
+                                    stream_callback(parsed_content)
+                                except json.JSONDecodeError:
+                                    stream_callback(stream_content)
+                            else:
+                                stream_callback(stream_content)
                         except Exception as e:
                             logger.error(f"Error in stream callback: {e}")
                 
                 @sio.on('message')
                 def on_message(data):
                     logger.info(f"Received direct message: {data}")
-                    if stream_callback and "text" in data:
+                    if stream_callback:
                         try:
-                            stream_callback(data["text"])
+                            if isinstance(data, dict) and "text" in data:
+                                stream_callback(data["text"])
+                            else:
+                                stream_callback(data)
                         except Exception as e:
                             logger.error(f"Error in message callback: {e}")
                 
@@ -131,7 +152,7 @@ class WorkerRouter():
                     final_result = data.get("result")
                     request_completed = True
                     logger.info(f"Received completion message: {data}")
-                    sio.disconnect()
+                    # Don't disconnect immediately to ensure all messages are processed
                 
                 @sio.on('result')
                 def on_result(data):
@@ -139,7 +160,7 @@ class WorkerRouter():
                     final_result = data.get("result")
                     request_completed = True
                     logger.info(f"Received result message: {data}")
-                    sio.disconnect()
+                    # Don't disconnect immediately to ensure all messages are processed
                 
                 @sio.on('error')
                 def on_error(data):
@@ -151,8 +172,25 @@ class WorkerRouter():
                 def on_heartbeat(data):
                     logger.debug("Received heartbeat")
                 
-                # Connect to the server and wait for completion
-                sio.connect(self.socketio_url)
+                # Connect to the server with timeout
+                connect_timeout = 10  # 10 seconds timeout for connection
+                try:
+                    sio.connect(self.socketio_url, wait_timeout=connect_timeout)
+                except Exception as e:
+                    logger.error(f"Failed to connect within {connect_timeout} seconds: {e}")
+                    raise
+                
+                # Wait for connection to be established
+                connection_wait_time = 0
+                while not connection_established and connection_wait_time < 5 and not connection_error:
+                    time.sleep(0.5)
+                    connection_wait_time += 0.5
+                
+                if not connection_established:
+                    if connection_error:
+                        raise Exception(f"Failed to establish connection: {connection_error}")
+                    else:
+                        raise Exception("Timed out waiting for connection to establish")
                 
                 # Wait for a response with timeout
                 timeout = 300  # 5 minutes timeout
@@ -166,6 +204,13 @@ class WorkerRouter():
                     sio.disconnect()
                     raise Exception("Request timed out waiting for response")
                 
+                # Add a small delay before disconnecting to ensure all messages are processed
+                time.sleep(1)
+                
+                # Gracefully disconnect
+                if sio.connected:
+                    sio.disconnect()
+                
                 # Return the final result
                 return final_result
                 
@@ -175,8 +220,10 @@ class WorkerRouter():
                 if retry_count >= max_retries:
                     logger.error("Max retries reached for connection")
                     raise Exception(f"Failed to connect to SocketIO server: {str(e)}")
+                time.sleep(1)  # Wait before retrying
             except Exception as e:
                 logger.error(f"Unexpected error: {str(e)}")
                 retry_count += 1
                 if retry_count >= max_retries:
                     raise Exception(f"Failed to call worker via SocketIO: {str(e)}")
+                time.sleep(1)  # Wait before retrying
