@@ -140,13 +140,13 @@ class WorkerAPI:
             if isinstance(msg, str):
                 # For string messages, just send as stream
                 self.sio.emit('stream', {"stream": msg}, room=client_id)
-                logger.debug(f"Sent string message: {msg[:50]}...")
+                logger.info(f"Sent string message: {msg[:50]}...")
             elif isinstance(msg, dict):
                 # For dict messages, format based on type
                 if msg.get("type") == "text" and msg.get("role") == "assistant":
                     # Send the full message
                     self.sio.emit('message', msg, room=client_id)
-                    logger.debug(f"Sent assistant text message: {msg.get('text', '')[:50]}...")
+                    logger.info(f"Sent assistant text message: {msg.get('text', '')[:50]}...")
                 elif msg.get("type") == "task":
                     # Format tool/task messages
                     tool_msg = {
@@ -157,11 +157,11 @@ class WorkerAPI:
                         }
                     }
                     self.sio.emit('tool', tool_msg, room=client_id)
-                    logger.debug(f"Sent task message: {msg.get('title', '')}")
+                    logger.info(f"Sent task message: {msg.get('title', '')}")
                 else:
                     # Default case for other dict messages
                     self.sio.emit('stream', {"stream": str(msg)}, room=client_id)
-                    logger.debug(f"Sent generic dict message")
+                    logger.info(f"Sent generic dict message")
                 
             # Add a debug confirmation after successful sending
             logger.info(f"Message successfully sent to client {client_id} (type: {type(msg).__name__})")

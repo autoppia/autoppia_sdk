@@ -44,7 +44,7 @@ class PineconeManager(VectorStoreInterface):
             PineconeVectorStore: Vector store instance
         """
         if index_name not in self.pc.list_indexes().names():
-            self.pc.create_index(index_name, dimension=1536, metric="cosine")
+            self.pc.create_index(index_name, dimension=1536, metric="cosine", spec={"serverless": {"cloud": "aws", "region": "us-east-1"}})
         return PineconeVectorStore.from_existing_index(self.index_name, self.embeddings)
 
     def add_document(self, file_path, filter={"chat_session": 1}):
