@@ -52,13 +52,14 @@ class WorkerRouter():
         self.socketio_url = f"http://{self.ip}:{self.port}"
         logger.info(f"Initialized WorkerRouter with SocketIO URL: {self.socketio_url}")
     
-    def call(self, message: str, stream_callback=None):
+    def call(self, message: str, stream_callback=None, keep_alive=False):
         """Sends a message to the worker for processing via Socket.IO.
         
         Args:
             message (str): The message to send to the worker
             stream_callback (callable, optional): Callback function to handle streaming responses
                 If provided, streaming messages will be passed to this function
+            keep_alive (bool, optional): If True, the connection will be kept alive indefinitely
         
         Returns:
             The final result from the worker
@@ -204,15 +205,18 @@ class WorkerRouter():
                     sio.disconnect()
                     raise Exception("Request timed out waiting for response")
                 
-                # Add a small delay before disconnecting to ensure all messages are processed
-                time.sleep(1)
+                if not keep_alive:            
+                    # Add a small delay before disconnecting to ensure all messages are processed
+                    time.sleep(1)
+                    
+                    # Gracefully disconnect
+                    if sio.connected:
+                        sio.disconnect()
+
+                    return final_result
                 
-                # Gracefully disconnect
-                if sio.connected:
-                    sio.disconnect()
-                
-                # Return the final result
-                return final_result
+                else:
+                    return final_result, sio
                 
             except socketio.exceptions.ConnectionError as e:
                 logger.warning(f"SocketIO connection error: {e}")
