@@ -66,6 +66,7 @@ class WorkerRouter():
         """
         max_retries = 3
         retry_count = 0
+        last_error = None
         
         while retry_count < max_retries:
             try:
@@ -179,7 +180,10 @@ class WorkerRouter():
                     sio.connect(self.socketio_url, wait_timeout=connect_timeout)
                 except Exception as e:
                     logger.error(f"Failed to connect within {connect_timeout} seconds: {e}")
-                    raise
+                    retry_count += 1
+                    last_error = e
+                    time.sleep(1)  # Wait before retrying
+                    continue  # Skip the rest of the loop and try again
                 
                 # Wait for connection to be established
                 connection_wait_time = 0
@@ -221,6 +225,7 @@ class WorkerRouter():
             except socketio.exceptions.ConnectionError as e:
                 logger.warning(f"SocketIO connection error: {e}")
                 retry_count += 1
+                last_error = e
                 if retry_count >= max_retries:
                     logger.error("Max retries reached for connection")
                     raise Exception(f"Failed to connect to SocketIO server: {str(e)}")
@@ -228,6 +233,13 @@ class WorkerRouter():
             except Exception as e:
                 logger.error(f"Unexpected error: {str(e)}")
                 retry_count += 1
+                last_error = e
                 if retry_count >= max_retries:
                     raise Exception(f"Failed to call worker via SocketIO: {str(e)}")
                 time.sleep(1)  # Wait before retrying
+        
+        # If we've exhausted all retries without returning, raise the last error
+        if last_error:
+            raise Exception(f"Failed to call worker after {max_retries} attempts: {str(last_error)}")
+        else:
+            raise Exception(f"Failed to call worker after {max_retries} attempts with unknown error")
