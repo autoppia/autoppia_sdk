@@ -1,8 +1,11 @@
 from typing import Dict, Optional, Any, Set
-import socketio
 import json
 import logging
 import threading
+import asyncio
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.responses import JSONResponse
+import uvicorn
 from autoppia_sdk.src.workers.worker_api import WorkerAPI
 from autoppia_sdk.src.apps.interface import AIApp
 from autoppia_sdk.src.workers.interface import AIWorker
@@ -14,7 +17,7 @@ logger = logging.getLogger("AppAPI")
 
 class AppAPI(WorkerAPI):
     """
-    WebSocket server wrapper for app implementations using Python-SocketIO.
+    FastAPI server wrapper for app implementations.
     
     This class extends the WorkerAPI to provide additional functionality for
     handling app-specific operations, including routing messages to specific
@@ -22,7 +25,8 @@ class AppAPI(WorkerAPI):
     
     Attributes:
         app: The app instance that handles message processing
-        sio: The SocketIO server instance
+        api: The FastAPI instance
+        active_connections: Dictionary of active WebSocket connections
     """
     def __init__(self, app: AIApp, host="localhost", port=8000):
         """
@@ -35,28 +39,51 @@ class AppAPI(WorkerAPI):
         """
         super().__init__(worker=app, host=host, port=port)
         self.app = app  # Store a reference to the app for app-specific operations
+        self.api = FastAPI()
+        self.active_connections = {}
         
-        # Register additional event handlers for app-specific operations
-        self.sio.on('get_app_info', self.handle_get_app_info)
-        self.sio.on('get_ui_config', self.handle_get_ui_config)
-        self.sio.on('get_workers', self.handle_get_workers)
+        # Register HTTP endpoints
+        self.api.get("/app_info")(self.handle_get_app_info_http)
+        self.api.get("/ui_config")(self.handle_get_ui_config_http)
+        self.api.get("/workers")(self.handle_get_workers_http)
+        
+        # Register WebSocket endpoint
+        self.api.websocket("/ws")(self.websocket_endpoint)
     
-    def handle_message(self, sid, data):
-        """Handle messages from clients with worker routing"""
-        client_id = sid
+    async def websocket_endpoint(self, websocket: WebSocket):
+        """Handle WebSocket connections and messages"""
+        await websocket.accept()
+        client_id = str(id(websocket))
+        self.active_connections[client_id] = websocket
         
+        try:
+            while True:
+                data = await websocket.receive_text()
+                # Process the message asynchronously
+                asyncio.create_task(self.handle_message(client_id, data))
+        except WebSocketDisconnect:
+            logger.info(f"Client {client_id} disconnected")
+            if client_id in self.active_connections:
+                del self.active_connections[client_id]
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}", exc_info=True)
+            if client_id in self.active_connections:
+                del self.active_connections[client_id]
+    
+    async def handle_message(self, client_id, data):
+        """Handle messages from clients with worker routing"""
         try:
             if not isinstance(data, dict):
                 try:
                     data = json.loads(data)
                 except json.JSONDecodeError as e:
                     logger.error(f"Invalid JSON received: {e}")
-                    self.sio.emit('error', {"error": f"Invalid JSON: {str(e)}"}, room=client_id)
+                    await self._send_message(client_id, "error", {"error": f"Invalid JSON: {str(e)}"})
                     return
             
             if not self.app:
                 logger.error("App not initialized")
-                self.sio.emit('error', {"error": "App not initialized"}, room=client_id)
+                await self._send_message(client_id, "error", {"error": "App not initialized"})
                 return
             
             # Check if this is an action request
@@ -64,13 +91,13 @@ class AppAPI(WorkerAPI):
                 action = data.get("action")
                 
                 if action == "get_app_info":
-                    self.handle_get_app_info(sid, data)
+                    await self.handle_get_app_info_ws(client_id, data)
                     return
                 elif action == "get_ui_config":
-                    self.handle_get_ui_config(sid, data)
+                    await self.handle_get_ui_config_ws(client_id, data)
                     return
                 elif action == "get_workers":
-                    self.handle_get_workers(sid, data)
+                    await self.handle_get_workers_ws(client_id, data)
                     return
             
             # Extract message and optional worker name
@@ -82,102 +109,157 @@ class AppAPI(WorkerAPI):
                 logger.info(f"Routing to worker: {worker_name}")
             
             # Acknowledge receipt
-            self.sio.emit('response', {"response": "Hello! I received your message"}, room=client_id)
+            await self._send_message(client_id, "response", {"response": "Hello! I received your message"})
             
             # Check if the app supports streaming
             if hasattr(self.app, 'call_stream'):
-                def send_message(msg):
-                    """Synchronous message sending wrapper"""
+                async def send_message(msg):
+                    """Asynchronous message sending wrapper"""
                     logger.info(f"Sending message via send_message: {str(msg)[:100]}...")
                     
                     try:
-                        self._send_message_sync(client_id, msg)
+                        await self._send_message(client_id, "stream", {"content": msg})
                     except Exception as e:
                         logger.error(f"Error in send_message: {e}", exc_info=True)
                 
-                # Use streaming call with sync sending
+                # Use streaming call with async sending
                 logger.info("Starting streaming call")
-                result = self.app.call_stream(message, send_message, worker_name) if worker_name else self.app.call_stream(message, send_message)
+                result = await self._run_in_thread(
+                    self.app.call_stream, message, send_message, worker_name if worker_name else None
+                )
                 
                 # Send completion message
                 try:
                     if result is not None:
-                        self.sio.emit('complete', {"complete": True, "result": result}, room=client_id)
+                        await self._send_message(client_id, "complete", {"complete": True, "result": result})
                     else:
-                        self.sio.emit('complete', {"complete": True}, room=client_id)
+                        await self._send_message(client_id, "complete", {"complete": True})
                     logger.info("Streaming call completed")
                 except Exception as e:
                     logger.error(f"Error sending completion message: {e}")
             else:
                 # Fallback to non-streaming call
                 logger.info("Starting non-streaming call")
-                result = self.app.route_message(message, worker_name) if worker_name else self.app.call(message)
-                self.sio.emit('result', {"result": result}, room=client_id)
+                if worker_name:
+                    result = await self._run_in_thread(self.app.route_message, message, worker_name)
+                else:
+                    result = await self._run_in_thread(self.app.call, message)
+                await self._send_message(client_id, "result", {"result": result})
                 logger.info("Non-streaming call completed")
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
             try:
-                self.sio.emit('error', {"error": str(e)}, room=client_id)
+                await self._send_message(client_id, "error", {"error": str(e)})
             except Exception as send_err:
                 logger.error(f"Error sending error message: {send_err}")
     
-    def handle_get_app_info(self, sid, data):
-        """Handle requests for app information"""
-        client_id = sid
-        
+    async def _send_message(self, client_id, event_type, data):
+        """Send a message to a client via WebSocket"""
+        if client_id in self.active_connections:
+            websocket = self.active_connections[client_id]
+            message = {"type": event_type, "data": data}
+            await websocket.send_text(json.dumps(message))
+    
+    async def _run_in_thread(self, func, *args, **kwargs):
+        """Run a blocking function in a thread pool"""
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+    
+    # HTTP endpoint handlers
+    async def handle_get_app_info_http(self, request: Request):
+        """HTTP endpoint for app information"""
+        try:
+            if not self.app:
+                raise HTTPException(status_code=500, detail="App not initialized")
+            
+            app_info = self.app.get_app_info()
+            return {"app_info": app_info}
+        except Exception as e:
+            logger.error(f"Error getting app info: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    async def handle_get_ui_config_http(self, request: Request):
+        """HTTP endpoint for UI configuration"""
+        try:
+            if not self.app:
+                raise HTTPException(status_code=500, detail="App not initialized")
+            
+            ui_config = self.app.get_ui_config()
+            return {"ui_config": ui_config}
+        except Exception as e:
+            logger.error(f"Error getting UI config: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    async def handle_get_workers_http(self, request: Request):
+        """HTTP endpoint for worker information"""
+        try:
+            if not self.app:
+                raise HTTPException(status_code=500, detail="App not initialized")
+            
+            workers = self.app.get_workers()
+            worker_info = {name: {"name": name} for name in workers.keys()}
+            return {"workers": worker_info}
+        except Exception as e:
+            logger.error(f"Error getting workers: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    # WebSocket event handlers
+    async def handle_get_app_info_ws(self, client_id, data):
+        """WebSocket handler for app information"""
         try:
             if not self.app:
                 logger.error("App not initialized")
-                self.sio.emit('error', {"error": "App not initialized"}, room=client_id)
+                await self._send_message(client_id, "error", {"error": "App not initialized"})
                 return
             
             app_info = self.app.get_app_info()
-            self.sio.emit('app_info', {"app_info": app_info}, room=client_id)
+            await self._send_message(client_id, "app_info", {"app_info": app_info})
             logger.info("Sent app info")
         except Exception as e:
             logger.error(f"Error getting app info: {e}", exc_info=True)
             try:
-                self.sio.emit('error', {"error": str(e)}, room=client_id)
+                await self._send_message(client_id, "error", {"error": str(e)})
             except Exception as send_err:
                 logger.error(f"Error sending error message: {send_err}")
     
-    def handle_get_ui_config(self, sid, data):
-        """Handle requests for UI configuration"""
-        client_id = sid
-        
+    async def handle_get_ui_config_ws(self, client_id, data):
+        """WebSocket handler for UI configuration"""
         try:
             if not self.app:
                 logger.error("App not initialized")
-                self.sio.emit('error', {"error": "App not initialized"}, room=client_id)
+                await self._send_message(client_id, "error", {"error": "App not initialized"})
                 return
             
             ui_config = self.app.get_ui_config()
-            self.sio.emit('ui_config', {"ui_config": ui_config}, room=client_id)
+            await self._send_message(client_id, "ui_config", {"ui_config": ui_config})
             logger.info("Sent UI config")
         except Exception as e:
             logger.error(f"Error getting UI config: {e}", exc_info=True)
             try:
-                self.sio.emit('error', {"error": str(e)}, room=client_id)
+                await self._send_message(client_id, "error", {"error": str(e)})
             except Exception as send_err:
                 logger.error(f"Error sending error message: {send_err}")
     
-    def handle_get_workers(self, sid, data):
-        """Handle requests for worker information"""
-        client_id = sid
-        
+    async def handle_get_workers_ws(self, client_id, data):
+        """WebSocket handler for worker information"""
         try:
             if not self.app:
                 logger.error("App not initialized")
-                self.sio.emit('error', {"error": "App not initialized"}, room=client_id)
+                await self._send_message(client_id, "error", {"error": "App not initialized"})
                 return
             
             workers = self.app.get_workers()
             worker_info = {name: {"name": name} for name in workers.keys()}
-            self.sio.emit('workers', {"workers": worker_info}, room=client_id)
+            await self._send_message(client_id, "workers", {"workers": worker_info})
             logger.info(f"Sent worker info for {len(worker_info)} workers")
         except Exception as e:
             logger.error(f"Error getting workers: {e}", exc_info=True)
             try:
-                self.sio.emit('error', {"error": str(e)}, room=client_id)
+                await self._send_message(client_id, "error", {"error": str(e)})
             except Exception as send_err:
                 logger.error(f"Error sending error message: {send_err}")
+    
+    def start(self):
+        """Start the FastAPI server"""
+        logger.info(f"Starting FastAPI server on {self.host}:{self.port}")
+        uvicorn.run(self.api, host=self.host, port=self.port)
