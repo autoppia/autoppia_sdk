@@ -2,6 +2,7 @@
 API Key verification utilities for Autoppia SDK.
 """
 import os
+import json
 from typing import Optional, Dict, Union
 import requests
 from urllib.parse import urljoin
@@ -26,7 +27,6 @@ class ApiKeyVerifier:
         config.host = base_url or os.getenv("AUTOPPIA_API_URL", "https://api.autoppia.com")
         self.api_client = ApiClient(configuration=config)
 
-
     def verify_api_key(self, api_key: str) -> Dict[str, Union[bool, str]]:
         """
         Verify an Autoppia API key.
@@ -47,15 +47,33 @@ class ApiKeyVerifier:
             ValueError: If the API key is empty or invalid format
         """
         api_keys_api = ApiKeysApi(self.api_client)
-        data = {
-            "credential": api_key
-        }
-
-        response = api_keys_api.api_keys_verify(data)
-
-        if response.status_code == 200:
-            return response.json()
-        elif response.status_code == 401:
-            return {"is_valid": False, "message": "Invalid API key"}
-        else:
-            response.raise_for_status()
+        
+        # Make a direct POST request using the API client
+        response = api_keys_api.api_client.call_api(
+            '/api-keys/verify', 'POST',
+            path_params={},
+            query_params=[],
+            header_params={'Content-Type': 'application/json'},
+            body={'credential': api_key},
+            response_type=None,
+            auth_settings=['Basic'],
+            _return_http_data_only=False,
+            _preload_content=False
+        )
+        
+        try:
+            if response.status == 200:
+                response_data = json.loads(response.data.decode('utf-8'))
+                return response_data
+            elif response.status == 401:
+                return {"is_valid": False, "message": "Invalid API key"}
+            else:
+                # Create a requests.Response-like object for raise_for_status
+                error_response = requests.Response()
+                error_response.status_code = response.status
+                error_response.raw = response
+                error_response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            if getattr(e.response, 'status_code', None) == 401:
+                return {"is_valid": False, "message": "Invalid API key"}
+            raise
