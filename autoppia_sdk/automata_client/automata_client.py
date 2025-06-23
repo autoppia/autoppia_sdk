@@ -19,14 +19,11 @@ class AutomataClient:
         self.max_retries = max_retries
 
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "User-Agent": "Autoppia SDK",
         }
 
         if self.api_key:
-            self.headers["Authorization"] = f"Bearer {self.api_key}"
-        else:
-            self.headers["Authorization"] = None
+            self.headers["x-api-key"] = self.api_key
     
     async def run_task(
         self, 
@@ -134,13 +131,38 @@ class AutomataClient:
         except Exception as e:
             logger.error(f"Failed to get task screenshots: {e}")
             raise
+
+    async def get_task_gif(
+        self,
+        task_id: str
+    ) -> Dict[str, Any]:
+        """
+        Retrieve the GIF of a specific task by its ID.
+
+        Args:
+            task_id (str): The ID of the task whose GIF are to be retrieved.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the task GIF.
+
+        Raises:
+            httpx.HTTPError: If the request to get the task GIF fails.
+        """
+        endpoint = f"{self.base_url}/task/{task_id}/gif"
+
+        try:
+            response = await self._execute_with_retry(endpoint)
+            return response
+        except Exception as e:
+            logger.error(f"Failed to get task gif: {e}")
+            raise
         
 
     async def _execute_with_retry(
         self,
         endpoint: str,
         method: Optional[str] = "GET",
-        payload: Dict[str, str] = None,
+        payload: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Execute an HTTP request with retry logic.
