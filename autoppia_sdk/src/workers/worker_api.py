@@ -102,6 +102,95 @@ class WorkerAPI:
                 'files': uploaded_files
             })
 
+        @self.app.route('/call', methods=['POST'])
+        def handle_http_message():
+            """Handle messages via HTTP POST, supporting both streaming and non-streaming responses"""
+            logger.info(f"HTTP message request received from {request.remote_addr}")
+            
+            # Get JSON data from request
+            try:
+                data = request.get_json()
+                if not data:
+                    return jsonify({'error': 'No JSON data provided'}), 400
+            except Exception as e:
+                logger.error(f"Invalid JSON received: {e}")
+                return jsonify({'error': f'Invalid JSON: {str(e)}'}), 400
+
+            # Check worker initialization
+            if not self.worker:
+                logger.error("Worker not initialized")
+                return jsonify({'error': 'Worker not initialized'}), 500
+
+            message = data.get("message", "")
+            logger.info(f"Received HTTP message: {message[:50]}...")
+
+            # Check if streaming is requested
+            stream_response = data.get("stream", False)
+
+            if stream_response and hasattr(self.worker, 'call_stream'):
+                def generate():
+                    """Generator for SSE streaming"""
+                    # Send initial acknowledgment
+                    yield 'data: ' + json.dumps({"type": "response", "response": "Hello! I received your message"}) + '\n\n'
+
+                    def send_message(msg):
+                        nonlocal self
+                        try:
+                            # Format message based on type
+                            if isinstance(msg, str):
+                                event_data = {"type": "stream", "stream": msg}
+                            elif isinstance(msg, dict):
+                                if msg.get("type") == "text" and msg.get("role") == "assistant":
+                                    event_data = {"type": "message", "message": msg}
+                                elif msg.get("type") == "task":
+                                    event_data = {
+                                        "type": "tool",
+                                        "tool": {
+                                            "title": msg.get("title", ""),
+                                            "text": msg.get("text", ""),
+                                            "icon": msg.get("icon", False)
+                                        }
+                                    }
+                                else:
+                                    event_data = {"type": "stream", "stream": str(msg)}
+                            else:
+                                event_data = {"type": "stream", "stream": str(msg)}
+
+                            yield 'data: ' + json.dumps(event_data) + '\n\n'
+                        except Exception as e:
+                            logger.error(f"Error in HTTP stream send_message: {e}", exc_info=True)
+                            yield 'data: ' + json.dumps({"type": "error", "error": str(e)}) + '\n\n'
+
+                    try:
+                        # Call worker with streaming
+                        result = self.worker.call_stream(message, send_message)
+                        
+                        # Send completion message
+                        completion_data = {"type": "complete", "complete": True}
+                        if result is not None:
+                            completion_data["result"] = result
+                        yield 'data: ' + json.dumps(completion_data) + '\n\n'
+                    except Exception as e:
+                        logger.error(f"Error in streaming worker call: {e}", exc_info=True)
+                        yield 'data: ' + json.dumps({"type": "error", "error": str(e)}) + '\n\n'
+
+                return self.app.response_class(
+                    generate(),
+                    mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+                )
+            else:
+                # Non-streaming response
+                try:
+                    result = self.worker.call(message)
+                    return jsonify({
+                        'success': True,
+                        'result': result
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing HTTP message: {e}", exc_info=True)
+                    return jsonify({'error': str(e)}), 500
+
     def handle_connect(self, auth=None):
         """Handle new client connections"""
         client_id = request.sid
