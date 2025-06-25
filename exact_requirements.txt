@@ -22,4 +22,4 @@ flask-socketio
 eventlet
 gevent
 gevent-websocket
-
+sseclient
