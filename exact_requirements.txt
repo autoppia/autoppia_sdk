@@ -23,4 +23,3 @@ eventlet
 gevent
 gevent-websocket
 
-git+https://oauth2:glpat-X4_gsgzbkVhTrt9_z8K5@gitlab.com/autoppia/autoppia_backend_clients/autoppia_backend_client_python.git@main#egg=autoppia_backend_client
