@@ -1,11 +1,11 @@
 from setuptools import find_packages, setup
 
-with open("exact_requirements.txt", "r") as f:
+with open("requirements.txt", "r") as f:
     required = f.read().splitlines()
 
 setup(
     name="autoppia",
-    version="0.1",
+    version="1.0",
     packages=find_packages(),
     install_requires=[
         req.strip() for req in required
