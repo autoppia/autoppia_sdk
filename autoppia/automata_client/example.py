@@ -3,10 +3,9 @@ from autoppia.automata_client import AutomataClient
 
 async def main():
     try:
-        client = AutomataClient(api_key="pk_uql4okogwfm")
+        client = AutomataClient(api_key="your_api_key")
         task_id = await client.run_task(
-            task="Find alpha token price and market cap for subnet 36.",
-            initial_url="https://tao.app"
+            task="Go to hackernews show hn and give me the first 3 posts"
         )
         print(f"<=== Task started with ID: {task_id} ===>")
 
@@ -25,7 +24,7 @@ async def main():
         print(f"<=== Task screenshots length: {len(screenshots)} ===>")
 
         gif = await client.get_task_gif(task_id)
-        print(f"<=== Task gif: {gif[:10]}... ===>")
+        print(f"<=== Task gif: {gif[:50]}... ===>")
     except Exception as e:
         print(f"An error occurred: {e}")
 

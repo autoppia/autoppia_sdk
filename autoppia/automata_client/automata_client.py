@@ -48,7 +48,7 @@ class AutomataClient:
             "url": initial_url
         }
 
-        endpoint = f"{self.base_url}/run_task"
+        endpoint = f"{self.base_url}/run-task"
 
         try:
             response = await self._execute_with_retry(endpoint, "POST", payload)
@@ -152,7 +152,7 @@ class AutomataClient:
 
         try:
             response = await self._execute_with_retry(endpoint)
-            return response
+            return response["gif"]
         except Exception as e:
             logger.error(f"Failed to get task gif: {e}")
             raise
