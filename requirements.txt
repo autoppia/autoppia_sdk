@@ -16,9 +16,11 @@ langchain
 langchain-community
 langchain-openai
 websockets
-flask
-flask-socketio
 eventlet
 gevent
 gevent-websocket
 sseclient
+python-multipart
+sse-starlette
+uvicorn[standard]
+fastapi

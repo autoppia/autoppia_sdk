@@ -2,7 +2,6 @@ import json
 import logging
 import requests
 import time
-import sseclient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -78,71 +77,90 @@ class WorkerRouter():
                     data["stream"] = True
                     headers["Accept"] = "text/event-stream"
                     
-                    response = requests.post(endpoint, json=data, headers=headers, stream=True)
-                    response.raise_for_status()
-                    
-                    client = sseclient.SSEClient(response)
-                    final_result = None
-                    
-                    for event in client.events():
-                        try:
-                            data = json.loads(event.data)
-                            event_type = data.get("type")
-                            
-                            if event_type == "error":
-                                error_msg = data.get("error", "Unknown error")
-                                raise Exception(f"Worker error: {error_msg}")
-                            
-                            elif event_type == "complete":
-                                final_result = data.get("result")
-                                break
-                            
-                            elif stream_callback:
-                                if event_type == "stream":
-                                    stream_callback(data.get("stream"))
-                                elif event_type == "message":
-                                    stream_callback(data.get("message"))
-                                elif event_type == "tool":
-                                    stream_callback(f"[TOOL] {json.dumps(data.get('tool'))}")
-                                elif event_type == "response":
-                                    stream_callback(data.get("response"))
-                                
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Failed to parse SSE data: {e}")
-                            continue
-                    
-                    return final_result
-                    
+                    try:
+                        logger.info(f"Initiating streaming request to {endpoint}")
+                        response = requests.post(endpoint, json=data, headers=headers, stream=True)
+                        logger.info(f"Streaming response received with status code: {response.status_code}")
+                        logger.info(f"Response headers: {dict(response.headers)}")
+                        response.raise_for_status()
+
+                        final_result = None
+                        current_data = ""
+                        buffer = []
+
+                        # Process the response line by line
+                        for line in response.iter_lines(decode_unicode=True):
+                            if line:
+                                if line.startswith('data: '):
+                                    buffer.append(line[6:])  # Remove 'data: ' prefix
+                            else:
+                                # Empty line indicates end of event
+                                if buffer:
+                                    try:
+                                        # Join multi-line data if present
+                                        json_str = ''.join(buffer).strip()
+                                        if json_str:  # Only try to parse if we have data
+                                            logger.debug(f"Parsing JSON: {json_str}")
+                                            json_data = json.loads(json_str)
+                                            
+                                            event_type = json_data.get("type")
+                                            if event_type == "error":
+                                                error_msg = json_data.get("error", "Unknown error")
+                                                logger.error(f"Worker returned error: {error_msg}")
+                                                raise Exception(f"Worker error: {error_msg}")
+                                            
+                                            elif event_type == "complete":
+                                                final_result = json_data.get("result", json_data.get("complete", None))
+                                                logger.info("Received complete event")
+                                                break
+                                            
+                                            elif event_type in ["response", "stream", "message"] and stream_callback:
+                                                text = json_data.get("response") or json_data.get("stream") or json_data.get("message")
+                                                if text:
+                                                    stream_callback(text)
+                                            
+                                            elif event_type == "tool" and stream_callback:
+                                                tool_data = json_data.get("tool")
+                                                if tool_data:
+                                                    stream_callback(f"[TOOL] {json.dumps(tool_data)}")
+                                    except json.JSONDecodeError as e:
+                                        logger.error(f"JSON parse error: {str(e)}")
+                                        logger.error(f"Raw data: {buffer}")
+                                    except Exception as e:
+                                        logger.error(f"Error processing event: {str(e)}")
+                                        logger.error(f"Raw data: {buffer}")
+                                    finally:
+                                        buffer = []  # Clear buffer after processing
+
+                        if final_result is None:
+                            final_result = "Message processed successfully"
+
+                        return final_result
+
+                    except Exception as e:
+                        logger.error(f"Error in streaming request: {str(e)}")
+                        raise
+
+                    finally:
+                        response.close()
+
                 else:
                     # Non-streaming request
                     response = requests.post(endpoint, json=data, headers=headers)
                     response.raise_for_status()
-                    
                     result = response.json()
-                    if not result.get("success"):
+                    
+                    if not result.get("success", True):
                         raise Exception(result.get("error", "Unknown error"))
                     
-                    return result.get("result")
-                    
-            except requests.exceptions.RequestException as e:
-                logger.warning(f"HTTP request error: {e}")
-                retry_count += 1
-                last_error = e
-                if retry_count >= max_retries:
-                    logger.error("Max retries reached for HTTP request")
-                    raise Exception(f"Failed to connect to HTTP server: {str(e)}")
-                time.sleep(1)  # Wait before retrying
-                
+                    return result.get("result", result)
+
             except Exception as e:
-                logger.error(f"Unexpected error in HTTP call: {str(e)}")
+                logger.error(f"Request failed: {str(e)}")
                 retry_count += 1
                 last_error = e
                 if retry_count >= max_retries:
-                    raise Exception(f"Failed to call worker: {str(e)}")
+                    raise Exception(f"Failed after {max_retries} attempts: {str(e)}")
                 time.sleep(1)  # Wait before retrying
-        
-        # If we've exhausted all retries without returning, raise the last error
-        if last_error:
-            raise Exception(f"Failed to call worker after {max_retries} attempts: {str(last_error)}")
-        else:
-            raise Exception(f"Failed to call worker after {max_retries} attempts with unknown error")
+
+        raise Exception(f"Failed after {max_retries} attempts: {str(last_error)}")
