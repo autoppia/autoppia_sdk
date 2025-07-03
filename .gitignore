@@ -27,5 +27,6 @@ secrets/
 devops/envs/
 myenv/
 venv/
+autoppia_sdk.egg-info/
 
 autoppia_agentic_framework/finetunning/*

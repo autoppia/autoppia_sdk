@@ -1,7 +1,7 @@
 import httpx
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class AutomataClient:
         self, 
         task: str, 
         initial_url: Optional[str] = None
-    ) -> Dict[str, str]:
+    ) -> str:
         """
         Run a specified task by sending a request to the task endpoint.
 
@@ -48,11 +48,11 @@ class AutomataClient:
             "url": initial_url
         }
 
-        endpoint = f"{self.base_url}/run_task"
+        endpoint = f"{self.base_url}/run-task"
 
         try:
             response = await self._execute_with_retry(endpoint, "POST", payload)
-            return response
+            return response["id"]
         except Exception as e:
             logger.error(f"Failed to run task: {e}")
             raise
@@ -85,7 +85,7 @@ class AutomataClient:
     async def get_task_status(
         self,
         task_id: str
-    ) -> Dict[str, Any]:
+    ) -> str:
         """
         Retrieve the status of a specific task by its ID.
 
@@ -102,7 +102,7 @@ class AutomataClient:
 
         try:
             response = await self._execute_with_retry(endpoint)
-            return response
+            return response["status"]
         except Exception as e:
             logger.error(f"Failed to get task status: {e}")
             raise
@@ -110,7 +110,7 @@ class AutomataClient:
     async def get_task_screenshots(
         self,
         task_id: str
-    ) -> Dict[str, Any]:
+    ) -> List[str]:
         """
         Retrieve the screenshots of a specific task by its ID.
 
@@ -127,7 +127,7 @@ class AutomataClient:
 
         try:
             response = await self._execute_with_retry(endpoint)
-            return response
+            return response["screenshots"]
         except Exception as e:
             logger.error(f"Failed to get task screenshots: {e}")
             raise
@@ -135,7 +135,7 @@ class AutomataClient:
     async def get_task_gif(
         self,
         task_id: str
-    ) -> Dict[str, Any]:
+    ) -> str:
         """
         Retrieve the GIF of a specific task by its ID.
 
@@ -152,7 +152,7 @@ class AutomataClient:
 
         try:
             response = await self._execute_with_retry(endpoint)
-            return response
+            return response["gif"]
         except Exception as e:
             logger.error(f"Failed to get task gif: {e}")
             raise
