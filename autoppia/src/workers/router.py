@@ -1,17 +1,21 @@
 import json
 import logging
+import websockets
+import asyncio
 import requests
 import time
+from typing import Optional, Callable, Any
+from websockets.legacy.client import WebSocketClientProtocol
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("WorkerRouter")
 
 class WorkerRouter():
-    """A router class for handling communication with AI workers via HTTP.
+    """A router class for handling communication with AI workers via WebSocket.
 
     This class manages the routing and communication with AI worker instances,
-    handling configuration retrieval and message processing through HTTP/SSE.
+    handling configuration retrieval and message processing through WebSocket.
     """
 
     @classmethod
@@ -47,16 +51,49 @@ class WorkerRouter():
         """
         self.ip = ip
         self.port = port
-        self.base_url = f"http://{self.ip}:{self.port}"
-        logger.info(f"Initialized WorkerRouter with base URL: {self.base_url}")
+        self.ws_url = f"ws://{self.ip}:{self.port}/ws"
+        self.http_url = f"http://{self.ip}:{self.port}"
+        logger.info(f"Initialized WorkerRouter with WebSocket URL: {self.ws_url}")
+        self._websocket: Optional[WebSocketClientProtocol] = None
+        self.connected = False
 
-    def call(self, message: str, stream_callback=None):
-        """Sends a message to the worker for processing.
+    @property
+    def websocket(self) -> Optional[WebSocketClientProtocol]:
+        return self._websocket
+
+    @websocket.setter
+    def websocket(self, value: Optional[WebSocketClientProtocol]) -> None:
+        self._websocket = value
+
+    async def connect(self) -> None:
+        """Establishes WebSocket connection with the worker."""
+        if not self.connected:
+            try:
+                self._websocket = await websockets.connect(self.ws_url)
+                self.connected = True
+                logger.info("WebSocket connection established")
+            except Exception as e:
+                logger.error(f"Failed to establish WebSocket connection: {str(e)}")
+                raise
+
+    async def disconnect(self) -> None:
+        """Closes the WebSocket connection."""
+        if self.websocket and self.connected:
+            try:
+                await self.websocket.close()
+            except Exception as e:
+                logger.error(f"Error closing WebSocket connection: {str(e)}")
+            finally:
+                self._websocket = None
+                self.connected = False
+                logger.info("WebSocket connection closed")
+
+    async def call(self, message: str, stream_callback: Optional[Callable[[Any], None]] = None) -> Any:
+        """Sends a message to the worker for processing via WebSocket.
         
         Args:
             message (str): The message to send to the worker
             stream_callback (callable, optional): Callback function to handle streaming responses
-                If provided, streaming messages will be passed to this function
         
         Returns:
             The final result from the worker
@@ -64,103 +101,84 @@ class WorkerRouter():
         max_retries = 3
         retry_count = 0
         last_error = None
-        endpoint = f"{self.base_url}/call"
-        
+
         while retry_count < max_retries:
             try:
-                # Prepare request data
-                data = {"message": message}
-                headers = {"Content-Type": "application/json"}
-                
-                if stream_callback:
-                    # Streaming request
-                    data["stream"] = True
-                    headers["Accept"] = "text/event-stream"
-                    
+                # Ensure connection is established
+                if not self.connected:
+                    await self.connect()
+
+                if not self.websocket:
+                    raise Exception("WebSocket connection not established")
+
+                # Send message
+                await self.websocket.send(json.dumps({"message": message}))
+                logger.info(f"Message sent: {message[:50]}...")
+
+                # Process responses
+                final_result = None
+                while True:
                     try:
-                        logger.info(f"Initiating streaming request to {endpoint}")
-                        response = requests.post(endpoint, json=data, headers=headers, stream=True)
-                        logger.info(f"Streaming response received with status code: {response.status_code}")
-                        logger.info(f"Response headers: {dict(response.headers)}")
-                        response.raise_for_status()
+                        response = await self.websocket.recv()
+                        data = json.loads(response)
+                        event_type = data.get("type")
 
-                        final_result = None
-                        current_data = ""
-                        buffer = []
+                        if event_type == "error":
+                            error_msg = data.get("error", "Unknown error")
+                            logger.error(f"Worker returned error: {error_msg}")
+                            raise Exception(f"Worker error: {error_msg}")
 
-                        # Process the response line by line
-                        for line in response.iter_lines(decode_unicode=True):
-                            if line:
-                                if line.startswith('data: '):
-                                    buffer.append(line[6:])  # Remove 'data: ' prefix
-                            else:
-                                # Empty line indicates end of event
-                                if buffer:
-                                    try:
-                                        # Join multi-line data if present
-                                        json_str = ''.join(buffer).strip()
-                                        if json_str:  # Only try to parse if we have data
-                                            logger.debug(f"Parsing JSON: {json_str}")
-                                            json_data = json.loads(json_str)
-                                            
-                                            event_type = json_data.get("type")
-                                            if event_type == "error":
-                                                error_msg = json_data.get("error", "Unknown error")
-                                                logger.error(f"Worker returned error: {error_msg}")
-                                                raise Exception(f"Worker error: {error_msg}")
-                                            
-                                            elif event_type == "complete":
-                                                final_result = json_data.get("result", json_data.get("complete", None))
-                                                logger.info("Received complete event")
-                                                break
-                                            
-                                            elif event_type in ["response", "stream", "message"] and stream_callback:
-                                                text = json_data.get("response") or json_data.get("stream") or json_data.get("message")
-                                                if text:
-                                                    stream_callback(text)
-                                            
-                                            elif event_type == "tool" and stream_callback:
-                                                tool_data = json_data.get("tool")
-                                                if tool_data:
-                                                    stream_callback(f"[TOOL] {json.dumps(tool_data)}")
-                                    except json.JSONDecodeError as e:
-                                        logger.error(f"JSON parse error: {str(e)}")
-                                        logger.error(f"Raw data: {buffer}")
-                                    except Exception as e:
-                                        logger.error(f"Error processing event: {str(e)}")
-                                        logger.error(f"Raw data: {buffer}")
-                                    finally:
-                                        buffer = []  # Clear buffer after processing
+                        elif event_type == "complete":
+                            final_result = data.get("result", data.get("complete", None))
+                            logger.info("Received complete event")
+                            return final_result
 
-                        if final_result is None:
-                            final_result = "Message processed successfully"
+                        elif stream_callback and event_type in ["response", "stream", "message"]:
+                            text = data.get("response") or data.get("stream") or data.get("message")
+                            if text:
+                                stream_callback(text)
 
-                        return final_result
+                        elif stream_callback and event_type == "tool":
+                            tool_data = data.get("tool")
+                            if tool_data:
+                                stream_callback(f"[TOOL] {json.dumps(tool_data)}")
 
-                    except Exception as e:
-                        logger.error(f"Error in streaming request: {str(e)}")
+                    except websockets.exceptions.ConnectionClosed:
+                        logger.error("WebSocket connection closed unexpectedly")
+                        self.connected = False
                         raise
-
-                    finally:
-                        response.close()
-
-                else:
-                    # Non-streaming request
-                    response = requests.post(endpoint, json=data, headers=headers)
-                    response.raise_for_status()
-                    result = response.json()
-                    
-                    if not result.get("success", True):
-                        raise Exception(result.get("error", "Unknown error"))
-                    
-                    return result.get("result", result)
 
             except Exception as e:
                 logger.error(f"Request failed: {str(e)}")
                 retry_count += 1
                 last_error = e
+                
+                # Close connection on error
+                await self.disconnect()
+                
                 if retry_count >= max_retries:
                     raise Exception(f"Failed after {max_retries} attempts: {str(e)}")
-                time.sleep(1)  # Wait before retrying
+                
+                # Wait before retrying
+                await asyncio.sleep(1)
 
         raise Exception(f"Failed after {max_retries} attempts: {str(last_error)}")
+
+    async def upload_file(self, file_path: str) -> dict:
+        """Uploads a file to the worker via HTTP.
+        
+        Args:
+            file_path (str): Path to the file to upload
+            
+        Returns:
+            dict: Response from the worker containing upload status
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                files = {'files': (file_path.split('/')[-1], f)}
+                response = requests.post(f"{self.http_url}/upload", files=files)
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Failed to upload file: {str(e)}")
+            raise

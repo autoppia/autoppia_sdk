@@ -1,13 +1,12 @@
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Body
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Body, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 import json
 import logging
 import os
 from werkzeug.utils import secure_filename
 import uvicorn
 import asyncio
-from sse_starlette.sse import EventSourceResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -15,10 +14,10 @@ logger = logging.getLogger("WorkerAPI")
 
 class WorkerAPI:
     """
-    HTTP server wrapper for worker implementations using FastAPI.
+    WebSocket server wrapper for worker implementations using FastAPI.
     
-    This class provides an HTTP interface for worker operations including
-    message processing with streaming capability.
+    This class provides a WebSocket interface for worker operations including
+    message processing with real-time communication.
     
     Attributes:
         worker: The worker instance that handles message processing
@@ -37,18 +36,105 @@ class WorkerAPI:
         self.host = host
         self.port = port
         self.app = FastAPI(title="Worker API")
+        self.active_connections: Dict[int, WebSocket] = {}
         
         # File upload configuration
         self.upload_folder = os.path.join(os.getcwd(), 'uploads')
         self.max_content_length = 16 * 1024 * 1024  # 16MB max file size
         os.makedirs(self.upload_folder, exist_ok=True)
 
-        # Register HTTP routes
-        self.register_http_routes()
+        # Register routes
+        self.register_routes()
 
-    def register_http_routes(self):
-        """Register HTTP routes for the FastAPI app"""
+    def register_routes(self):
+        """Register WebSocket and HTTP routes for the FastAPI app"""
         
+        @self.app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):
+            """Handle WebSocket connections"""
+            await websocket.accept()
+            connection_id = id(websocket)
+            self.active_connections[connection_id] = websocket
+            
+            try:
+                while True:
+                    # Receive message
+                    data = await websocket.receive_json()
+                    message = data.get("message", "")
+                    logger.info(f"Received WebSocket message: {message[:50]}...")
+
+                    if not self.worker:
+                        await websocket.send_json({
+                            "type": "error",
+                            "error": "Worker not initialized"
+                        })
+                        continue
+
+                    try:
+                        # Send initial response
+                        await websocket.send_json({
+                            "type": "response",
+                            "response": "Message received, processing..."
+                        })
+
+                        # Process message with streaming support
+                        async def send_message(msg):
+                            try:
+                                if isinstance(msg, str):
+                                    data = {"type": "stream", "stream": msg}
+                                elif isinstance(msg, dict):
+                                    if msg.get("type") == "text" and msg.get("role") == "assistant":
+                                        data = {"type": "message", "message": msg}
+                                    elif msg.get("type") == "task":
+                                        data = {
+                                            "type": "tool",
+                                            "tool": {
+                                                "title": msg.get("title", ""),
+                                                "text": msg.get("text", ""),
+                                                "icon": msg.get("icon", False)
+                                            }
+                                        }
+                                    else:
+                                        data = {"type": "stream", "stream": str(msg)}
+                                else:
+                                    data = {"type": "stream", "stream": str(msg)}
+
+                                await websocket.send_json(data)
+                            except Exception as e:
+                                logger.error(f"Error in send_message: {e}", exc_info=True)
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "error": str(e)
+                                })
+
+                        # Call worker with streaming
+                        if hasattr(self.worker, 'call_stream'):
+                            result = await self.worker.call_stream(message, send_message)
+                        else:
+                            result = await self.worker.call(message)
+                            await send_message(result)
+
+                        # Send completion
+                        await websocket.send_json({
+                            "type": "complete",
+                            "complete": True,
+                            "result": result
+                        })
+
+                    except Exception as e:
+                        logger.error(f"Error processing message: {e}", exc_info=True)
+                        await websocket.send_json({
+                            "type": "error",
+                            "error": str(e)
+                        })
+
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket client disconnected: {connection_id}")
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}", exc_info=True)
+            finally:
+                self.active_connections.pop(connection_id, None)
+
         @self.app.post('/upload')
         async def upload_file(files: list[UploadFile] = File(...)):
             """Handle file uploads via HTTP POST"""
@@ -87,99 +173,8 @@ class WorkerAPI:
                 'files': uploaded_files
             })
 
-        @self.app.post('/call')
-        def handle_http_message(data: Dict[str, Any] = Body(...)):
-            """Handle messages via HTTP POST, supporting both streaming and non-streaming responses"""
-            logger.info("HTTP message request received")
-            
-            try:
-                if not data:
-                    raise HTTPException(status_code=400, detail="No JSON data provided")
-            except Exception as e:
-                logger.error(f"Invalid JSON received: {e}")
-                raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-
-            if not self.worker:
-                logger.error("Worker not initialized")
-                raise HTTPException(status_code=500, detail="Worker not initialized")
-
-            message = data.get("message", "")
-            logger.info(f"Received HTTP message: {message[:50]}...")
-
-            # Check if streaming is requested
-            stream_response = data.get("stream", False)
-
-            if stream_response and hasattr(self.worker, 'call_stream'):
-                async def event_generator():
-                    try:
-                        # Initial response
-                        data = {"type": "response", "response": "Hello! I received your message"}
-                        yield json.dumps(data)
-
-                        async def send_message(msg):
-                            try:
-                                if isinstance(msg, str):
-                                    data = {"type": "stream", "stream": msg}
-                                elif isinstance(msg, dict):
-                                    if msg.get("type") == "text" and msg.get("role") == "assistant":
-                                        data = {"type": "message", "message": msg}
-                                    elif msg.get("type") == "task":
-                                        data = {
-                                            "type": "tool",
-                                            "tool": {
-                                                "title": msg.get("title", ""),
-                                                "text": msg.get("text", ""),
-                                                "icon": msg.get("icon", False)
-                                            }
-                                        }
-                                    else:
-                                        data = {"type": "stream", "stream": str(msg)}
-                                else:
-                                    data = {"type": "stream", "stream": str(msg)}
-
-                                return json.dumps(data)
-                            except Exception as e:
-                                logger.error(f"Error in send_message: {e}", exc_info=True)
-                                error_data = {"type": "error", "error": str(e)}
-                                return json.dumps(error_data)
-
-                        # Call worker with streaming
-                        result = self.worker.call_stream(message, lambda msg: (yield send_message(msg)))
-                        
-                        # Send completion
-                        completion_data = {"type": "complete", "complete": True}
-                        if result is not None:
-                            completion_data["result"] = result
-                        yield json.dumps(completion_data)
-
-                    except Exception as e:
-                        logger.error(f"Error in streaming worker call: {e}", exc_info=True)
-                        error_data = {"type": "error", "error": str(e)}
-                        yield json.dumps(error_data)
-
-                return EventSourceResponse(
-                    event_generator(),
-                    media_type='text/event-stream',
-                    headers={
-                        'Cache-Control': 'no-cache',
-                        'X-Accel-Buffering': 'no',
-                        'Connection': 'keep-alive'
-                    }
-                )
-            else:
-                # Non-streaming request
-                try:
-                    result = self.worker.call(message)
-                    return JSONResponse({
-                        'success': True,
-                        'result': result
-                    })
-                except Exception as e:
-                    logger.error(f"Error processing HTTP message: {e}", exc_info=True)
-                    raise HTTPException(status_code=500, detail=str(e))
-
     def start(self):
-        """Start the HTTP server using uvicorn"""
+        """Start the WebSocket server using uvicorn"""
         logger.info("Starting worker...")
         self.worker.start()
         
@@ -188,18 +183,18 @@ class WorkerAPI:
             host=self.host,
             port=self.port,
             log_level="info",
-            workers=1,  # Single worker for SSE support
+            workers=1,  # Single worker for WebSocket support
             timeout_keep_alive=65,
             access_log=True,
             loop="auto"
         )
         
-        logger.info(f"Worker API server starting on http://{self.host}:{self.port}")
+        logger.info(f"Worker API server starting on ws://{self.host}:{self.port}/ws")
         server = uvicorn.Server(config)
         server.run()
 
     def stop(self):
-        """Stop the HTTP server"""
+        """Stop the WebSocket server"""
         logger.info("Stopping worker API...")
         if self.worker:
             try:

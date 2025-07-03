@@ -20,7 +20,9 @@ eventlet
 gevent
 gevent-websocket
 sseclient
-python-multipart
+python-multipart>=0.0.5
 sse-starlette
-uvicorn[standard]
-fastapi
+uvicorn>=0.15.0
+fastapi>=0.68.0
+werkzeug>=2.0.0
+requests>=2.26.0
