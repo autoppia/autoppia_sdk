@@ -149,15 +149,12 @@ class WorkerRouter():
                 if isinstance(data, dict):
                     # Dictionary message - extract content safely
                     content = data.get('stream') or data.get('text') or str(data)
-                    print("content=================>", content)
                 elif isinstance(data, str):
                     # String message - use directly
                     content = data
-                    print("content=================>", content)
                 else:
                     # Other types - convert to string
                     content = str(data)
-                    print("content=================>", content)
                 
                 # Send content to callback if we have it
                 if content:
