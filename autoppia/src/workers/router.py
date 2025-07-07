@@ -1,46 +1,22 @@
 import json
 import logging
-import websockets
-import asyncio
 import requests
 import time
-from typing import Optional, Callable, Any
-from websockets.legacy.client import WebSocketClientProtocol
+import socketio
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from autoppia.src.workers.adapter import AIWorkerConfigAdapter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("WorkerRouter")
 
 class WorkerRouter():
-    """A router class for handling communication with AI workers via WebSocket.
+    """A simplified router class for handling communication with AI workers via Socket.IO.
 
     This class manages the routing and communication with AI worker instances,
-    handling configuration retrieval and message processing through WebSocket.
+    using a clean and reliable event-driven approach.
     """
-
-    @classmethod
-    def from_id(cls, worker_id: int):
-        """Fetches worker IP and port from the info endpoint"""
-        try:
-            payload = {
-                "SECRET": "ekwklrklkfewf3232nm",
-                "id": worker_id
-            }
-            logger.info(f"Fetching worker info for worker_id: {worker_id}")
-            response = requests.get("http://3.251.99.81/info", json=payload)
-            data = response.json()
-            logger.info(f"Received worker info: {data}")
-            ip = data.get("ip")
-            port = data.get("port")
-            
-            if not ip or not port:
-                logger.error(f"Invalid response: missing ip or port. Response: {data}")
-                raise ValueError("Invalid response: missing ip or port")
-                
-            return cls(ip, port)
-        except Exception as e:
-            logger.error(f"Failed to fetch worker info: {str(e)}")
-            raise Exception(f"Failed to fetch worker info: {str(e)}")
     
     def __init__(self, ip: str, port: int):
         """Initializes a WorkerRouter instance.
@@ -51,134 +27,231 @@ class WorkerRouter():
         """
         self.ip = ip
         self.port = port
-        self.ws_url = f"ws://{self.ip}:{self.port}/ws"
-        self.http_url = f"http://{self.ip}:{self.port}"
-        logger.info(f"Initialized WorkerRouter with WebSocket URL: {self.ws_url}")
-        self._websocket: Optional[WebSocketClientProtocol] = None
-        self.connected = False
-
-    @property
-    def websocket(self) -> Optional[WebSocketClientProtocol]:
-        return self._websocket
-
-    @websocket.setter
-    def websocket(self, value: Optional[WebSocketClientProtocol]) -> None:
-        self._websocket = value
-
-    async def connect(self) -> None:
-        """Establishes WebSocket connection with the worker."""
-        if not self.connected:
-            try:
-                self._websocket = await websockets.connect(self.ws_url)
-                self.connected = True
-                logger.info("WebSocket connection established")
-            except Exception as e:
-                logger.error(f"Failed to establish WebSocket connection: {str(e)}")
-                raise
-
-    async def disconnect(self) -> None:
-        """Closes the WebSocket connection."""
-        if self.websocket and self.connected:
-            try:
-                await self.websocket.close()
-            except Exception as e:
-                logger.error(f"Error closing WebSocket connection: {str(e)}")
-            finally:
-                self._websocket = None
-                self.connected = False
-                logger.info("WebSocket connection closed")
-
-    async def call(self, message: str, stream_callback: Optional[Callable[[Any], None]] = None) -> Any:
-        """Sends a message to the worker for processing via WebSocket.
+        self.socketio_url = f"http://{self.ip}:{self.port}"
+        self.timeout = 2400  # 40 minutes total timeout (increased from 30)
+        self.ping_timeout = 1800  # 30 minutes ping timeout (matches server)
+        self.connect_timeout = 600  # 10 minutes connect timeout (increased from 2)
+        self._call_in_progress = False
+        logger.info(f"Initialized WorkerRouter with SocketIO URL: {self.socketio_url}")
+        logger.info(f"Timeouts: total={self.timeout}s, ping={self.ping_timeout}s, connect={self.connect_timeout}s")
+    
+    def call(self, message: str, stream_callback=None, keep_alive=False):
+        """Sends a message to the worker for processing via Socket.IO.
         
         Args:
             message (str): The message to send to the worker
             stream_callback (callable, optional): Callback function to handle streaming responses
+            keep_alive (bool, optional): If True, returns the connection for reuse
         
         Returns:
-            The final result from the worker
+            The final result from the worker, or (result, connection) if keep_alive=True
         """
-        max_retries = 3
-        retry_count = 0
-        last_error = None
-
-        while retry_count < max_retries:
-            try:
-                # Ensure connection is established
-                if not self.connected:
-                    await self.connect()
-
-                if not self.websocket:
-                    raise Exception("WebSocket connection not established")
-
-                # Send message
-                await self.websocket.send(json.dumps({"message": message}))
-                logger.info(f"Message sent: {message[:50]}...")
-
-                # Process responses
-                final_result = None
-                while True:
-                    try:
-                        response = await self.websocket.recv()
-                        data = json.loads(response)
-                        event_type = data.get("type")
-
-                        if event_type == "error":
-                            error_msg = data.get("error", "Unknown error")
-                            logger.error(f"Worker returned error: {error_msg}")
-                            raise Exception(f"Worker error: {error_msg}")
-
-                        elif event_type == "complete":
-                            final_result = data.get("result", data.get("complete", None))
-                            logger.info("Received complete event")
-                            return final_result
-
-                        elif stream_callback and event_type in ["response", "stream", "message"]:
-                            text = data.get("response") or data.get("stream") or data.get("message")
-                            if text:
-                                stream_callback(text)
-
-                        elif stream_callback and event_type == "tool":
-                            tool_data = data.get("tool")
-                            if tool_data:
-                                stream_callback(f"[TOOL] {json.dumps(tool_data)}")
-
-                    except websockets.exceptions.ConnectionClosed:
-                        logger.error("WebSocket connection closed unexpectedly")
-                        self.connected = False
-                        raise
-
-            except Exception as e:
-                logger.error(f"Request failed: {str(e)}")
-                retry_count += 1
-                last_error = e
-                
-                # Close connection on error
-                await self.disconnect()
-                
-                if retry_count >= max_retries:
-                    raise Exception(f"Failed after {max_retries} attempts: {str(e)}")
-                
-                # Wait before retrying
-                await asyncio.sleep(1)
-
-        raise Exception(f"Failed after {max_retries} attempts: {str(last_error)}")
-
-    async def upload_file(self, file_path: str) -> dict:
-        """Uploads a file to the worker via HTTP.
+        # Prevent concurrent calls
+        if self._call_in_progress:
+            raise Exception("Another call is already in progress")
         
-        Args:
-            file_path (str): Path to the file to upload
-            
-        Returns:
-            dict: Response from the worker containing upload status
-        """
+        self._call_in_progress = True
+        sio = None
+        
         try:
-            with open(file_path, 'rb') as f:
-                files = {'files': (file_path.split('/')[-1], f)}
-                response = requests.post(f"{self.http_url}/upload", files=files)
-                response.raise_for_status()
-                return response.json()
+            # Create simplified Socket.IO client
+            sio = self._create_socketio_client()
+            
+            # Track response state
+            response_state = {
+                'completed': False,
+                'result': None,
+                'error': None,
+                'last_activity': time.time()
+            }
+            
+            # Setup event handlers
+            self._setup_event_handlers(sio, response_state, stream_callback)
+            
+            # Connect to server
+            logger.info(f"Connecting to {self.socketio_url}...")
+            sio.connect(self.socketio_url, wait_timeout=self.connect_timeout)
+            logger.info("Connected successfully")
+            
+            # Send message
+            sio.emit('message', {"message": message})
+            logger.info(f"Message sent: {message[:50]}...")
+            
+            # Wait for completion
+            self._wait_for_completion(sio, response_state)
+            
+            # Handle final result
+            # if response_state['error']:
+            #     raise Exception(f"Worker error: {response_state['error']}")
+            
+            if keep_alive:
+                self._call_in_progress = False
+                return response_state['result'], sio
+            else:
+                if sio.connected:
+                    sio.disconnect()
+                self._call_in_progress = False
+                return response_state['result']
+                
         except Exception as e:
-            logger.error(f"Failed to upload file: {str(e)}")
+            logger.error(f"Call failed: {e}")
+            if sio and sio.connected:
+                try:
+                    sio.disconnect()
+                except:
+                    pass
+            self._call_in_progress = False
             raise
+    
+    def _create_socketio_client(self):
+        """Create a simplified Socket.IO client with proper timeout settings."""
+        # Create HTTP session with appropriate timeouts
+        session = requests.Session()
+        retry_strategy = Retry(total=3, status_forcelist=[429, 500, 502, 503, 504], backoff_factor=1)
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        session.timeout = (self.connect_timeout, self.timeout)  # Use configured timeouts
+        
+        return socketio.Client(
+            reconnection=False,  # Disable auto-reconnection for simplicity
+            logger=logger,
+            engineio_logger=False,
+            http_session=session
+        )
+    
+    def _setup_event_handlers(self, sio, response_state, stream_callback):
+        """Setup simplified event handlers."""
+        
+        @sio.event
+        def connect():
+            logger.info("Connected to Socket.IO server")
+            logger.info(f"Connection established with server at {self.socketio_url}")
+        
+        @sio.event
+        def disconnect():
+            logger.info("Disconnected from Socket.IO server")
+            logger.warning(f"Lost connection to server at {self.socketio_url}")
+        
+        @sio.on('message')
+        def on_message(data):
+            """Handle all streaming response messages."""
+            response_state['last_activity'] = time.time()
+            logger.debug(f"Received message from server: {str(data)[:100]}...")
+            
+            if not stream_callback:
+                return
+                
+            try:
+                # Simplified and robust message handling
+                content = None
+                
+                if isinstance(data, dict):
+                    # Dictionary message - extract content safely
+                    content = data.get('stream') or data.get('text') or str(data)
+                    print("content=================>", content)
+                elif isinstance(data, str):
+                    # String message - use directly
+                    content = data
+                    print("content=================>", content)
+                else:
+                    # Other types - convert to string
+                    content = str(data)
+                    print("content=================>", content)
+                
+                # Send content to callback if we have it
+                if content:
+                    stream_callback(content)
+                    
+            except Exception as e:
+                logger.error(f"Error in stream callback: {e}")
+                response_state['error'] = str(e)
+                response_state['completed'] = True
+        
+        @sio.on('complete')
+        def on_complete(data):
+            """Handle completion signal."""
+            response_state['last_activity'] = time.time()
+            response_state['completed'] = True
+            logger.info("Received completion signal from server")
+            
+            if isinstance(data, dict):
+                response_state['result'] = data.get('result', '')
+                if 'error' in data:
+                    response_state['error'] = data['error']
+                    logger.error(f"Server reported error: {data['error']}")
+            else:
+                response_state['result'] = str(data) if data else ''
+            
+            logger.info("Request completed successfully")
+        
+        @sio.on('error')
+        def on_error(data):
+            """Handle error messages."""
+            response_state['last_activity'] = time.time()
+            response_state['completed'] = True
+            
+            if isinstance(data, dict):
+                error_msg = data.get('error', 'Unknown error')
+            else:
+                error_msg = str(data)
+            
+            response_state['error'] = error_msg
+            logger.error(f"Worker error: {error_msg}")
+        
+        @sio.event
+        def connect_error(data):
+            logger.error(f"Connection error: {data}")
+            response_state['error'] = f"Connection error: {data}"
+            response_state['completed'] = True
+        
+        @sio.on('pong')
+        def on_pong(data):
+            """Handle pong responses from server"""
+            response_state['last_activity'] = time.time()
+            logger.debug(f"Received pong from server: {data}")
+            # Don't mark as completed for pong messages
+    
+    def _wait_for_completion(self, sio, response_state):
+        """Wait for the request to complete with timeout handling."""
+        start_time = time.time()
+        last_log_time = start_time
+        
+        logger.info(f"Waiting for completion with timeouts: total={self.timeout}s, ping={self.ping_timeout}s")
+        
+        while not response_state['completed']:
+            if not sio.connected:
+                logger.error("Connection lost during processing")
+                raise Exception("Connection lost")
+            
+            current_time = time.time()
+            elapsed = current_time - start_time
+            since_activity = current_time - response_state['last_activity']
+            
+            # Log progress every 15 seconds (more frequent)
+            if current_time - last_log_time > 15:
+                logger.info(f"Still waiting... elapsed: {elapsed:.1f}s, since_activity: {since_activity:.1f}s, connected: {sio.connected}")
+                last_log_time = current_time
+                
+                # Send heartbeat to server if no activity for 10 seconds
+                if since_activity > 10:
+                    try:
+                        sio.emit('ping', {'timestamp': current_time})
+                        logger.debug("Sent heartbeat ping to server")
+                    except Exception as e:
+                        logger.warning(f"Failed to send heartbeat: {e}")
+            
+            # Check total timeout
+            if elapsed > self.timeout:
+                logger.error(f"Request timeout after {self.timeout} seconds (total elapsed: {elapsed:.1f}s)")
+                raise Exception(f"Request timeout after {self.timeout} seconds")
+            
+            # Check activity timeout (no messages received) - more lenient for long responses
+            if since_activity > self.ping_timeout:
+                logger.error(f"No activity timeout after {self.ping_timeout} seconds (since_activity: {since_activity:.1f}s)")
+                raise Exception(f"No activity timeout after {self.ping_timeout} seconds")
+            
+            time.sleep(0.1)  # Small sleep to prevent busy waiting
+        
+        total_elapsed = time.time() - start_time
+        logger.info(f"Request completed after {total_elapsed:.1f} seconds")
