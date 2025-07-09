@@ -16,13 +16,4 @@ langchain
 langchain-community
 langchain-openai
 websockets
-eventlet
-gevent
-gevent-websocket
-sseclient
-python-multipart>=0.0.5
-sse-starlette
-uvicorn>=0.15.0
-fastapi>=0.68.0
-werkzeug>=2.0.0
-requests>=2.26.0
+requests

@@ -1,396 +1,418 @@
-from typing import Optional, Dict, Any
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit
+import asyncio
+import websockets
 import json
 import logging
-import os
 import time
-from werkzeug.utils import secure_filename
+import uuid
+from typing import Optional, Dict, Any, Callable
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from enum import Enum
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("WorkerAPI")
 
 
+class MessageType(Enum):
+    """Message types for WebSocket communication"""
+    CONNECT = "connect"
+    DISCONNECT = "disconnect"
+    MESSAGE = "message"
+    STREAM = "stream"
+    COMPLETE = "complete"
+    ERROR = "error"
+    HEARTBEAT = "heartbeat"
+
+
+@dataclass
+class WebSocketMessage:
+    """Structured message format for WebSocket communication"""
+    type: MessageType
+    id: str
+    data: Any
+    timestamp: float = None
+    
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = time.time()
+    
+    def to_json(self) -> str:
+        """Convert message to JSON string"""
+        return json.dumps({
+            "type": self.type.value,
+            "id": self.id,
+            "data": self.data,
+            "timestamp": self.timestamp
+        })
+    
+    @classmethod
+    def from_json(cls, json_str: str) -> 'WebSocketMessage':
+        """Create message from JSON string"""
+        data = json.loads(json_str)
+        return cls(
+            type=MessageType(data["type"]),
+            id=data["id"],
+            data=data["data"],
+            timestamp=data.get("timestamp", time.time())
+        )
+
+
+class ClientConnection:
+    """Represents a connected client with state management"""
+    
+    def __init__(self, websocket, client_id: str):
+        self.websocket = websocket
+        self.client_id = client_id
+        self.connected_at = time.time()
+        self.last_activity = time.time()
+        self.is_processing = False
+        self.message_count = 0
+        
+    def update_activity(self):
+        """Update last activity timestamp"""
+        self.last_activity = time.time()
+    
+    async def send_message(self, message: WebSocketMessage):
+        """Send message to client with error handling"""
+        try:
+            await self.websocket.send(message.to_json())
+            self.message_count += 1
+            logger.debug(f"Sent message to {self.client_id}: {message.type.value}")
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning(f"Client {self.client_id} connection closed while sending message")
+            raise
+        except Exception as e:
+            logger.error(f"Error sending message to {self.client_id}: {e}")
+            raise
+    
+    async def send_stream(self, content: str, stream_id: str = None):
+        """Send streaming content to client"""
+        message = WebSocketMessage(
+            type=MessageType.STREAM,
+            id=stream_id or str(uuid.uuid4()),
+            data={"content": content}
+        )
+        await self.send_message(message)
+    
+    async def send_complete(self, result: str, error: str = None):
+        """Send completion message to client"""
+        message = WebSocketMessage(
+            type=MessageType.COMPLETE,
+            id=str(uuid.uuid4()),
+            data={"result": result, "error": error}
+        )
+        await self.send_message(message)
+    
+    async def send_error(self, error: str):
+        """Send error message to client"""
+        message = WebSocketMessage(
+            type=MessageType.ERROR,
+            id=str(uuid.uuid4()),
+            data={"error": error}
+        )
+        await self.send_message(message)
+
+
 class WorkerAPI:
     """
-    Simplified WebSocket server wrapper for worker implementations using Flask-SocketIO.
+    Professional WebSocket server for AI worker implementations.
     
-    This class provides a clean WebSocket interface for worker operations with
-    simplified message processing and reliable connection handling.
-    
-    Attributes:
-        worker: The worker instance that handles message processing
-        socketio: The Flask-SocketIO server instance
-        app: The Flask application instance
+    Features:
+    - Native WebSocket support with high performance
+    - Streaming responses for AI workers
+    - Automatic connection management and heartbeat
+    - Clean, structured message format
+    - Comprehensive error handling
+    - Simple API for easy integration
     """
     
-    def __init__(self, worker, host="localhost", port=8000):
+    def __init__(self, worker, host: str = "localhost", port: int = 8000):
         """
         Initialize the WorkerAPI.
         
         Args:
-            worker: Worker instance that will process messages
-            host (str): Host to bind the server to
-            port (int): Port to listen on
+            worker: Worker instance that processes messages
+            host: Host to bind the server to
+            port: Port to listen on
         """
         self.worker = worker
         self.host = host
         self.port = port
-        self.app = Flask(__name__)
+        self.clients: Dict[str, ClientConnection] = {}
+        self.executor = ThreadPoolExecutor(max_workers=10)
+        self.heartbeat_interval = 30  # seconds
+        self.connection_timeout = 300  # 5 minutes
+        self.is_running = False
         
-        # Configure Socket.IO with appropriate settings
-        self.socketio = SocketIO(
-            self.app, 
-            cors_allowed_origins="*",
-            ping_timeout=1800,  # 30 minutes ping timeout (increased from 20)
-            ping_interval=30,   # Send ping every 30 seconds (decreased from 1 minute for more frequent checks)
-            logger=logger,
-            engineio_logger=False,
-            # Additional Engine.IO timeout settings
-            http_compression=False,  # Disable compression to reduce processing overhead
-            allow_upgrades=True,     # Allow WebSocket upgrades
-            transports=['websocket', 'polling'],  # Prefer WebSocket but allow fallback
-            # Engine.IO specific timeouts
-            max_http_buffer_size=1000000,  # 1MB buffer for large responses
-            always_connect=True,     # Always try to connect
-            # Additional settings for long-running operations
-            async_mode='threading',  # Use threading for better performance
-            # Add additional timeout configurations
-            socket_timeout=1800,  # 30 minutes socket timeout
-            heartbeat_timeout=1800,  # 30 minutes heartbeat timeout
-            heartbeat_interval=30,  # 30 seconds heartbeat interval
-            # Engine.IO specific settings for stability
-            engineio_client_timeout=1800,  # 30 minutes Engine.IO timeout
-            transport_timeout=1800,  # 30 minutes transport timeout
-            connection_timeout=180,  # 3 minutes connection timeout
-            # Force keep connection alive
-            force_new_connection=False,  # Reuse connections
-            reconnection_attempts=5,  # Allow reconnection attempts
-        )
-        
-        self._running = False
-        self.active_connections = set()
-        self.processing_clients = set()  # Track clients currently processing
-        
-        # File upload configuration
-        self.app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
-        self.app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-        os.makedirs(self.app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-        # Register event handlers and routes
-        self._register_event_handlers()
-        self._register_http_routes()
-
-    def _register_http_routes(self):
-        """Register HTTP routes for the Flask app"""
-        
-        @self.app.route('/upload', methods=['POST'])
-        def upload_file():
-            """Handle file uploads via HTTP POST"""
-            logger.info(f"File upload request received from {request.remote_addr}")
-            
-            if 'file' not in request.files:
-                return jsonify({'error': 'No file part'}), 400
-                
-            files = request.files.getlist('file')
-            
-            if not files or files[0].filename == '':
-                return jsonify({'error': 'No file selected'}), 400
-            
-            uploaded_files = []
-            for file in files:
-                if file:
-                    filename = secure_filename(file.filename)
-                    filepath = os.path.join(self.app.config['UPLOAD_FOLDER'], filename)
-                    file.save(filepath)
-                    logger.info(f"File saved: {filepath}")
-                    uploaded_files.append(filename)
-                    
-                    # Notify worker if it has file handling capability
-                    if hasattr(self.worker, 'file_uploaded'):
-                        try:
-                            self.worker.file_uploaded(filepath)
-                        except Exception as e:
-                            logger.error(f"Error processing uploaded file: {e}")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Successfully uploaded {len(uploaded_files)} file(s)',
-                'files': uploaded_files
-            })
-
-        @self.app.route('/health', methods=['GET'])
-        def health_check():
-            """Health check endpoint"""
-            return jsonify({
-                'status': 'healthy',
-                'active_connections': len(self.active_connections),
-                'processing_clients': len(self.processing_clients),
-                'server_running': self._running,
-                'worker_status': 'active' if self.worker else 'inactive'
-            })
-
-        @self.app.route('/status', methods=['GET'])
-        def server_status():
-            """Detailed server status endpoint"""
-            return jsonify({
-                'server': {
-                    'running': self._running,
-                    'host': self.host,
-                    'port': self.port,
-                    'timestamp': time.time()
-                },
-                'connections': {
-                    'active': len(self.active_connections),
-                    'processing': len(self.processing_clients),
-                    'connection_ids': list(self.active_connections)
-                },
-                'worker': {
-                    'available': self.worker is not None,
-                    'has_streaming': hasattr(self.worker, 'call_stream'),
-                    'has_file_upload': hasattr(self.worker, 'file_uploaded')
-                },
-                'socket_config': {
-                    'ping_timeout': 1800,
-                    'ping_interval': 30,
-                    'max_buffer_size': 1000000
-                }
-            })
-
-    def _register_event_handlers(self):
-        """Register Socket.IO event handlers"""
-        
-        @self.socketio.on('connect')
-        def handle_connect(auth=None):
-            """Handle new client connections"""
-            client_id = request.sid
-            self.active_connections.add(client_id)
-            logger.info(f"Client connected: {client_id} from {request.environ.get('REMOTE_ADDR', 'unknown')}. Total connections: {len(self.active_connections)}")
-            
-            # Send welcome message to confirm connection
-            self.socketio.emit('message', {
-                "stream": "🔗 Connection established. Ready to process your requests."
-            }, room=client_id)
-
-        @self.socketio.on('disconnect')
-        def handle_disconnect():
-            """Handle client disconnections"""
-            client_id = request.sid
-            self.active_connections.discard(client_id)
-            was_processing = client_id in self.processing_clients
-            self.processing_clients.discard(client_id)
-            logger.info(f"Client disconnected: {client_id} (was_processing: {was_processing}). Total connections: {len(self.active_connections)}")
-            
-            # Log disconnect reason if available
-            disconnect_reason = request.environ.get('disconnect_reason', 'unknown')
-            if disconnect_reason != 'unknown':
-                logger.info(f"Disconnect reason for {client_id}: {disconnect_reason}")
-
-        @self.socketio.on('ping')
-        def handle_ping(data):
-            """Handle ping/heartbeat messages from clients"""
-            client_id = request.sid
-            logger.debug(f"Received ping from {client_id}")
-            
-            # Respond with pong to confirm connection health
-            self.socketio.emit('pong', {
-                'timestamp': data.get('timestamp') if data else time.time(),
-                'server_time': time.time()
-            }, room=client_id)
-            
-            logger.debug(f"Sent pong response to {client_id}")
-
-        @self.socketio.on('message')
-        def handle_message(data):
-            """Handle messages from clients - simplified and reliable"""
-            client_id = request.sid
-            
-            try:
-                # Parse message data
-                if not isinstance(data, dict):
-                    try:
-                        data = json.loads(data)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Invalid JSON from {client_id}: {e}")
-                        emit('error', {"error": f"Invalid JSON: {str(e)}"})
-                        return
-                
-                # Validate worker
-                if not self.worker:
-                    logger.error("Worker not initialized")
-                    emit('error', {"error": "Worker not initialized"})
-                    return
-                
-                # Check if client is already processing
-                if client_id in self.processing_clients:
-                    logger.warning(f"Client {client_id} already processing, ignoring duplicate message")
-                    return
-                
-                message = data.get("message", "")
-                logger.info(f"Processing message from {client_id}: {message[:50]}...")
-                
-                # Mark client as processing
-                self.processing_clients.add(client_id)
-                
-                try:
-                    # Send initial acknowledgment
-                    emit('message', {"stream": "Processing your request..."})
-                    
-                    # Process message based on worker capabilities
-                    if hasattr(self.worker, 'call_stream'):
-                        self._handle_streaming_call(client_id, message)
-                    else:
-                        self._handle_simple_call(client_id, message)
-                        
-                except Exception as e:
-                    logger.error(f"Error processing message from {client_id}: {e}", exc_info=True)
-                    emit('error', {"error": str(e)})
-                    emit('complete', {"result": "", "error": str(e)})
-                    
-                finally:
-                    # Always remove from processing set
-                    self.processing_clients.discard(client_id)
-                    
-            except Exception as e:
-                logger.error(f"Error handling message from {client_id}: {e}", exc_info=True)
-                try:
-                    emit('error', {"error": str(e)})
-                except:
-                    pass
-                finally:
-                    self.processing_clients.discard(client_id)
-
-    def _handle_streaming_call(self, client_id, message):
-        """Handle streaming worker call"""
-        import threading
-        import time
-        
-        # Keep-alive mechanism
-        keep_alive_active = True
-        last_activity = time.time()
-        
-        def keep_alive_worker():
-            """Send periodic keep-alive messages to prevent connection timeout"""
-            nonlocal last_activity  # Declare nonlocal at the top
-            
-            while keep_alive_active:
-                try:
-                    current_time = time.time()
-                    # Send keep-alive if no activity for 15 seconds (more aggressive)
-                    if current_time - last_activity > 15:
-                        self.socketio.emit('message', {"stream": "⏳ Processing..."}, room=client_id)
-                        logger.debug(f"Sent keep-alive to {client_id}")
-                        # Update activity after sending keep-alive
-                        last_activity = current_time
-                    time.sleep(15)  # Check every 15 seconds (more frequent)
-                except Exception as e:
-                    logger.error(f"Keep-alive error for {client_id}: {e}")
-                    break
-        
-        # Start keep-alive thread
-        keep_alive_thread = threading.Thread(target=keep_alive_worker, daemon=True)
-        keep_alive_thread.start()
-        
-        def send_chunk(chunk):
-            """Send message chunk to client"""
-            nonlocal last_activity
-            last_activity = time.time()  # Update activity timestamp
-            
-            try:
-                if isinstance(chunk, str):
-                    # Simple string message
-                    self.socketio.emit('message', {"stream": chunk}, room=client_id)
-                elif isinstance(chunk, dict):
-                    # Structured message
-                    if chunk.get("type") == "text":
-                        self.socketio.emit('message', {"stream": chunk.get("text", "")}, room=client_id)
-                    elif chunk.get("type") == "task":
-                        # Tool/task message
-                        self.socketio.emit('message', {
-                            "stream": f"[TOOL] {chunk.get('title', '')}: {chunk.get('text', '')}"
-                        }, room=client_id)
-                    else:
-                        # Generic dict message
-                        self.socketio.emit('message', {"stream": str(chunk)}, room=client_id)
-                else:
-                    # Other types
-                    self.socketio.emit('message', {"stream": str(chunk)}, room=client_id)
-                    
-            except Exception as e:
-                logger.error(f"Error sending chunk to {client_id}: {e}")
-                raise  # Re-raise to stop processing
-        
-        try:
-            # Call worker with streaming
-            logger.info(f"Starting streaming call for {client_id}")
-            result = self.worker.call_stream(message, send_chunk)
-            
-            # Send completion
-            self.socketio.emit('complete', {
-                "result": result if result is not None else "",
-                "complete": True
-            }, room=client_id)
-            
-            logger.info(f"Streaming call completed for {client_id}")
-                
-        finally:
-            # Stop keep-alive thread
-            keep_alive_active = False
-
-    def _handle_simple_call(self, client_id, message):
-        """Handle simple (non-streaming) worker call"""
-        logger.info(f"Starting simple call for {client_id}")
-        result = self.worker.call(message)
-        
-        # Send result as completion
-        self.socketio.emit('complete', {
-            "result": result if result is not None else "",
-            "complete": True
-        }, room=client_id)
-        
-        logger.info(f"Simple call completed for {client_id}")
-
-    def start(self):
+        logger.info(f"WorkerAPI initialized on {host}:{port}")
+        logger.info(f"Heartbeat interval: {self.heartbeat_interval}s, Connection timeout: {self.connection_timeout}s")
+    
+    async def start(self):
         """Start the WebSocket server"""
-        logger.info("Starting worker API...")
-        self._running = True
+        logger.info("Starting WebSocket server...")
+        self.is_running = True
         
-        # Start worker
+        # Start worker if it has a start method
         if hasattr(self.worker, 'start'):
-            self.worker.start()
+            await asyncio.get_event_loop().run_in_executor(self.executor, self.worker.start)
             logger.info("Worker started")
         
-        # Start Socket.IO server
-        logger.info(f"Starting Socket.IO server on http://{self.host}:{self.port}")
-        self.socketio.run(
-            self.app, 
-            host=self.host, 
-            port=self.port,
-            debug=False,
-            use_reloader=False,
-            log_output=True,
-            allow_unsafe_werkzeug=True
-        )
-
-    def stop(self):
+        # Start heartbeat task
+        asyncio.create_task(self._heartbeat_task())
+        
+        # Start server
+        async with websockets.serve(
+            self._handle_client,
+            self.host,
+            self.port,
+            ping_interval=20,
+            ping_timeout=60,
+            close_timeout=10,
+            max_size=50 * 1024 * 1024  # 50MB max message size
+        ):
+            logger.info(f"WebSocket server started on ws://{self.host}:{self.port}")
+            logger.info("Server ready to accept connections")
+            
+            # Keep server running
+            while self.is_running:
+                await asyncio.sleep(1)
+    
+    async def stop(self):
         """Stop the WebSocket server"""
-        logger.info("Stopping worker API...")
-        self._running = False
+        logger.info("Stopping WebSocket server...")
+        self.is_running = False
+        
+        # Disconnect all clients
+        for client in list(self.clients.values()):
+            try:
+                await client.websocket.close()
+            except:
+                pass
+        
+        self.clients.clear()
         
         # Stop worker
-        if self.worker and hasattr(self.worker, 'stop'):
-            try:
-                self.worker.stop()
-                logger.info("Worker stopped")
-            except Exception as e:
-                logger.error(f"Error stopping worker: {e}")
+        if hasattr(self.worker, 'stop'):
+            await asyncio.get_event_loop().run_in_executor(self.executor, self.worker.stop)
+            logger.info("Worker stopped")
         
-        # Stop Socket.IO server
+        self.executor.shutdown(wait=True)
+        logger.info("WebSocket server stopped")
+    
+    async def _handle_client(self, websocket, path):
+        """Handle new client connections"""
+        client_id = str(uuid.uuid4())
+        client = ClientConnection(websocket, client_id)
+        self.clients[client_id] = client
+        
+        logger.info(f"Client {client_id} connected from {websocket.remote_address}")
+        
         try:
-            self.socketio.stop()
-            logger.info("Socket.IO server stopped")
+            # Send welcome message
+            await client.send_message(WebSocketMessage(
+                type=MessageType.CONNECT,
+                id=str(uuid.uuid4()),
+                data={"message": "Connection established. Ready to process requests."}
+            ))
+            
+            # Handle client messages
+            async for message in websocket:
+                try:
+                    await self._process_message(client, message)
+                except Exception as e:
+                    logger.error(f"Error processing message from {client_id}: {e}")
+                    await client.send_error(f"Message processing error: {str(e)}")
+                    
+        except websockets.exceptions.ConnectionClosed:
+            logger.info(f"Client {client_id} disconnected normally")
         except Exception as e:
-            logger.error(f"Error stopping Socket.IO server: {e}")
+            logger.error(f"Error handling client {client_id}: {e}")
+        finally:
+            # Clean up client
+            if client_id in self.clients:
+                del self.clients[client_id]
+                logger.info(f"Client {client_id} cleaned up. Active connections: {len(self.clients)}")
+    
+    async def _process_message(self, client: ClientConnection, raw_message: str):
+        """Process incoming message from client"""
+        client.update_activity()
         
-        logger.info("Worker API stopped")
+        try:
+            message = WebSocketMessage.from_json(raw_message)
+            logger.debug(f"Received {message.type.value} from {client.client_id}")
+            
+            if message.type == MessageType.MESSAGE:
+                await self._handle_worker_message(client, message)
+            elif message.type == MessageType.HEARTBEAT:
+                await self._handle_heartbeat(client, message)
+            else:
+                logger.warning(f"Unknown message type: {message.type.value}")
+        
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON from {client.client_id}: {e}")
+            await client.send_error("Invalid JSON format")
+        except Exception as e:
+            logger.error(f"Error processing message from {client.client_id}: {e}")
+            await client.send_error(f"Processing error: {str(e)}")
+    
+    async def _handle_worker_message(self, client: ClientConnection, message: WebSocketMessage):
+        """Handle message processing by worker"""
+        if client.is_processing:
+            await client.send_error("Another message is already being processed")
+            return
+        
+        if not self.worker:
+            await client.send_error("Worker not available")
+            return
+            
+        client.is_processing = True
+        content = message.data.get("content", "")
+        
+        logger.info(f"Processing message from {client.client_id}: {content[:50]}...")
+        
+        try:
+            # Check if worker supports streaming
+            if hasattr(self.worker, 'call_stream'):
+                await self._handle_streaming_worker(client, content, message.id)
+            else:
+                await self._handle_simple_worker(client, content, message.id)
+        
+        except Exception as e:
+            logger.error(f"Worker error for {client.client_id}: {e}")
+            await client.send_complete("", str(e))
+        finally:
+            client.is_processing = False
+    
+    async def _handle_streaming_worker(self, client: ClientConnection, content: str, message_id: str):
+        """Handle streaming worker response"""
+        
+        def stream_callback(chunk):
+            """Callback for streaming chunks"""
+            # Convert chunk to string format
+            if isinstance(chunk, dict):
+                if chunk.get("type") == "text":
+                    return chunk.get("text", "")
+                elif chunk.get("type") == "task":
+                    return f"[TOOL] {chunk.get('title', '')}: {chunk.get('text', '')}"
+                else:
+                    return str(chunk)
+            else:
+                return str(chunk)
+        
+        # Run worker in executor to avoid blocking
+        def worker_task():
+            chunks = []
+            
+            def collect_chunk(chunk):
+                processed = stream_callback(chunk)
+                if processed:
+                    chunks.append(processed)
+            
+            try:
+                result = self.worker.call_stream(content, collect_chunk)
+                return result, chunks
+            except Exception as e:
+                logger.error(f"Streaming worker error: {e}")
+                raise
+        
+        try:
+            # Execute worker task
+            result, chunks = await asyncio.get_event_loop().run_in_executor(
+                self.executor, worker_task
+            )
+            
+            # Send all chunks
+            for chunk in chunks:
+                await client.send_stream(chunk, message_id)
+            
+            # Send completion
+            await client.send_complete(result or "", None)
+            
+            logger.info(f"Streaming completed for {client.client_id} ({len(chunks)} chunks)")
+                
+        except Exception as e:
+            logger.error(f"Streaming error for {client.client_id}: {e}")
+            await client.send_complete("", str(e))
+    
+    async def _handle_simple_worker(self, client: ClientConnection, content: str, message_id: str):
+        """Handle simple worker response"""
+        try:
+            # Run worker in executor
+            result = await asyncio.get_event_loop().run_in_executor(
+                self.executor, self.worker.call, content
+            )
+            
+            await client.send_complete(result or "", None)
+            logger.info(f"Simple worker completed for {client.client_id}")
+            
+        except Exception as e:
+            logger.error(f"Simple worker error for {client.client_id}: {e}")
+            await client.send_complete("", str(e))
+    
+    async def _handle_heartbeat(self, client: ClientConnection, message: WebSocketMessage):
+        """Handle heartbeat message"""
+        response = WebSocketMessage(
+            type=MessageType.HEARTBEAT,
+            id=message.id,
+            data={"status": "alive", "timestamp": time.time()}
+        )
+        await client.send_message(response)
+    
+    async def _heartbeat_task(self):
+        """Background task to monitor client connections"""
+        while self.is_running:
+            try:
+                current_time = time.time()
+                disconnected_clients = []
+                
+                for client_id, client in self.clients.items():
+                    # Check for timeout
+                    if current_time - client.last_activity > self.connection_timeout:
+                        logger.warning(f"Client {client_id} timed out")
+                        disconnected_clients.append(client_id)
+                        try:
+                            await client.websocket.close()
+                        except:
+                            pass
+                
+                # Clean up disconnected clients
+                for client_id in disconnected_clients:
+                    if client_id in self.clients:
+                        del self.clients[client_id]
+                
+                if len(self.clients) > 0:
+                    logger.debug(f"Active connections: {len(self.clients)}")
+                
+            except Exception as e:
+                logger.error(f"Error in heartbeat task: {e}")
+            
+            await asyncio.sleep(self.heartbeat_interval)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get server status information"""
+        return {
+            "server": {
+                "running": self.is_running,
+                "host": self.host,
+                "port": self.port,
+                "uptime": time.time() - (self.clients[list(self.clients.keys())[0]].connected_at if self.clients else time.time())
+            },
+            "connections": {
+                "active": len(self.clients),
+                "processing": sum(1 for c in self.clients.values() if c.is_processing),
+                "total_messages": sum(c.message_count for c in self.clients.values())
+            },
+            "worker": {
+                "available": self.worker is not None,
+                "supports_streaming": hasattr(self.worker, 'call_stream')
+            }
+        }
+
+
+# Convenience function for easy server startup
+async def start_worker_server(worker, host="localhost", port=8000):
+    """Start a worker server with the given worker instance"""
+    api = WorkerAPI(worker, host, port)
+    await api.start()
+    return api
