@@ -1,5 +1,5 @@
 import asyncio
-from autoppia.automata_client import AutomataClient
+from autoppia.automata import AutomataClient
 
 async def main():
     try:

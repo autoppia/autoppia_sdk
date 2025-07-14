@@ -1,20 +1,20 @@
 import httpx
 import asyncio
 import logging
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Literal
 
 logger = logging.getLogger(__name__)
 
 class AutomataClient:
     def __init__(
         self,
+        api_key: str,
         base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
         timeout: int = 30,
         max_retries: int = 3
     ) -> None:
-        self.base_url = base_url or "https://api-automata.autoppia.com/api/v1"
         self.api_key = api_key
+        self.base_url = base_url or "https://api-automata.autoppia.com/api/v1"
         self.timeout = timeout
         self.max_retries = max_retries
 
@@ -52,7 +52,7 @@ class AutomataClient:
 
         try:
             response = await self._execute_with_retry(endpoint, "POST", payload)
-            return response["id"]
+            return response["task_id"]
         except Exception as e:
             logger.error(f"Failed to run task: {e}")
             raise
@@ -156,7 +156,77 @@ class AutomataClient:
         except Exception as e:
             logger.error(f"Failed to get task gif: {e}")
             raise
-        
+
+    async def start_cua(
+        self, 
+        task: str,
+        provider: Literal["openai"] = "openai",
+        display_width: int = 1024,
+        display_height: int = 768
+    ) -> Dict[str, Any]:
+        payload = {
+            "task": task,
+            "provider": provider,
+            "display_width": display_width,
+            "display_height": display_height
+        }
+
+        endpoint = f"{self.base_url}/cua/start"
+
+        try:
+            response = await self._execute_with_retry(endpoint, "POST", payload)
+            return response
+        except Exception as e:
+            logger.error(f"Failed to start CUA: {e}")
+            raise
+
+    async def forward_cua(
+        self,
+        agent_id: str,
+        user_input: Optional[str] = None,
+        screenshot: Optional[str] = None,
+        current_url: Optional[str] = None
+    ) -> Dict[str, Any]:
+        payload = {            
+            "user_input": user_input,
+            "screenshot": screenshot,
+            "current_url": current_url
+        }
+
+        endpoint = f"{self.base_url}/cua/{agent_id}/forward"
+
+        try:
+            response = await self._execute_with_retry(endpoint, "PUT", payload)
+            return response
+        except Exception as e:
+            logger.error(f"Failed to forward CUA: {e}")
+            raise
+
+    async def stop_cua(
+        self,
+        agent_id: str
+    ) -> Dict[str, Any]:
+        endpoint = f"{self.base_url}/cua/{agent_id}/stop"
+
+        try:
+            response = await self._execute_with_retry(endpoint, "PUT")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to stop CUA: {e}")
+            raise
+
+    async def get_cua_gif(
+        self,
+        agent_id: str
+    ) -> str:
+        endpoint = f"{self.base_url}/cua/{agent_id}/gif"
+
+        try:
+            response = await self._execute_with_retry(endpoint)
+            return response
+        except Exception as e:
+            logger.error(f"Failed to get CUA gif: {e}")
+            raise
 
     async def _execute_with_retry(
         self,
