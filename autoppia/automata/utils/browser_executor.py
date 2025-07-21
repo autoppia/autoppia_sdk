@@ -35,6 +35,11 @@ CUA_KEY_TO_PLAYWRIGHT_KEY = {
 
 class BrowserExecutor:
     def __init__(self):
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
+        
         self.width = 1024
         self.height = 768
     
@@ -62,7 +67,8 @@ class BrowserExecutor:
                     "--disable-extensions",
                     "--disable-file-system",
                     "--start-maximized"
-                ]
+                ],
+                viewport=None
             )
         else:            
             width, height = self.get_dimensions()

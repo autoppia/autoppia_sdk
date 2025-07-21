@@ -7,9 +7,10 @@ async def main():
         result = await agent.run_locally(
             task="Go to hackernews show hn and give me the first 3 posts",
             user_data_dir="C:\\Users\\YourUser\\AppData\\Local\\Google\\Chrome\\User Data\\Default",
-            chrome_pash="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+            chrome_path="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
         )
         print(result)
+        await agent.close()
     except Exception as e:
         print(f"An error occurred: {e}")
 
