@@ -24,6 +24,7 @@ class WorkerConfig:
     
     name: str
     system_prompt: Optional[str] = None
+    mcp: Optional[str] = None
     ip: Optional[str] = None
     port: Optional[int] = None
     integrations: Dict[str, IntegrationInterface] = field(default_factory=dict)
