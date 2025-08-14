@@ -1,20 +1,54 @@
-python-dotenv
-openai
-tiktoken
-bs4
-google-api-python-client
-google-auth-oauthlib
-python-dateutil
-selenium
-injector
-dependency-injector
-pymongo
-asyncio
-pytest
-psycopg2-binary
-langchain
-langchain-community
-langchain-openai
-websockets
-requests
-patchright
+# Core dependencies
+python-dotenv>=1.0.0
+httpx>=0.24.0
+websockets>=11.0.0
+asyncio-mqtt>=0.16.0
+
+# LLM and AI dependencies
+langchain>=0.1.0
+langchain-community>=0.0.10
+langchain-openai>=0.1.0
+langchain-anthropic>=0.1.0
+langchain-google-genai>=0.1.0
+langchain-cohere>=0.1.0
+langchain-huggingface>=0.1.0
+openai>=1.0.0
+anthropic>=0.7.0
+google-generativeai>=0.3.0
+cohere>=4.0.0
+huggingface-hub>=0.19.0
+tiktoken>=0.5.0
+
+# Web automation and browser control
+selenium>=4.15.0
+playwright>=1.40.0
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# Database and storage
+pymongo>=4.5.0
+psycopg2-binary>=2.9.0
+redis>=5.0.0
+
+# Google services
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.1.0
+google-auth>=2.23.0
+
+# Local model support
+llama-cpp-python>=0.2.0
+gpt4all>=2.0.0
+
+# Utilities
+python-dateutil>=2.8.0
+pydantic>=2.0.0
+typing-extensions>=4.8.0
+
+# Development dependencies (optional)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-cov>=4.1.0
+# black>=23.9.0
+# flake8>=6.1.0
+# isort>=5.12.0
+# mypy>=1.5.0
