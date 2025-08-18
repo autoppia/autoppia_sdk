@@ -1,74 +1,171 @@
-from typing import Dict, Type
-from autoppia.src.llms.interface import LLMServiceInterface
+"""
+Simple LLM Configuration Registry for Autoppia SDK
+
+This module provides a simple registry for managing LLM configurations
+without complex provider management or framework-specific implementations.
+"""
+
+import logging
+from typing import Dict, Any, Optional, List
+from .interface import LLMConfig
+
+logger = logging.getLogger(__name__)
+
 
 class LLMRegistry:
-    """Singleton registry for managing LLM services.
-    
-    This class provides a central registry for LLM services, allowing
-    registration, initialization, and access to different LLM implementations.
-    
-    Attributes:
-        _instance: Singleton instance
-        _current_service (LLMServiceInterface): Currently active LLM service
-        _services (Dict[str, Type[LLMServiceInterface]]): Registered service classes
     """
-
-    _instance = None
-    _current_service: LLMServiceInterface = None
-    _services: Dict[str, Type[LLMServiceInterface]] = {}
-
-    def __new__(cls):
-        """Ensure singleton instance."""
-        if cls._instance is None:
-            cls._instance = super(LLMRegistry, cls).__new__(cls)
-        return cls._instance
-
-    @classmethod
-    def register_service(cls, name: str, service_class: Type[LLMServiceInterface]) -> None:
-        """Register a new LLM service.
+    Simple registry for managing LLM configurations.
+    
+    This registry allows developers to:
+    1. Store and retrieve LLM configurations
+    2. List available configurations
+    3. Set a default configuration
+    4. Basic validation of configurations
+    """
+    
+    def __init__(self):
+        """Initialize the registry."""
+        self._configs: Dict[str, LLMConfig] = {}
+        self._default_config: Optional[str] = None
+    
+    def add_config(self, name: str, config: LLMConfig) -> None:
+        """Add an LLM configuration to the registry.
         
         Args:
-            name (str): Name to register the service under
-            service_class (Type[LLMServiceInterface]): Service class to register
+            name: Unique name for the configuration
+            config: LLM configuration object
         """
-        cls._services[name] = service_class
-
-    @classmethod
-    def get_service(cls) -> LLMServiceInterface:
-        """Get the current LLM service.
+        if not isinstance(config, LLMConfig):
+            raise ValueError("Config must be an LLMConfig instance")
         
-        Returns:
-            LLMServiceInterface: Currently initialized service
-            
-        Raises:
-            RuntimeError: If no service has been initialized
-        """
-        if not cls._current_service:
-            raise RuntimeError("No LLM service has been initialized")
-        return cls._current_service
-
-    @classmethod
-    def initialize_service(cls, name: str, **kwargs) -> None:
-        """Initialize a specific LLM service.
+        self._configs[name] = config
+        logger.info(f"Added LLM config: {name} ({config.provider_type})")
+        
+        # Set as default if it's the first one
+        if self._default_config is None:
+            self._default_config = name
+    
+    def get_config(self, name: Optional[str] = None) -> Optional[LLMConfig]:
+        """Get a configuration by name.
         
         Args:
-            name (str): Name of the service to initialize
-            **kwargs: Arguments to pass to the service constructor
+            name: Configuration name (uses default if None)
             
-        Raises:
-            ValueError: If the service name is not registered
+        Returns:
+            Configuration object or None if not found
         """
-        if name not in cls._services:
-            raise ValueError(f"Unknown LLM service: {name}")
+        config_name = name or self._default_config
+        if not config_name:
+            logger.warning("No default config set")
+            return None
         
-        service_class = cls._services[name]
-        cls._current_service = service_class(**kwargs)
-
-    @classmethod
-    def available_services(cls) -> list[str]:
-        """Get list of available service names.
+        config = self._configs.get(config_name)
+        if not config:
+            logger.warning(f"Config '{config_name}' not found")
+            return None
+        
+        return config
+    
+    def list_configs(self) -> List[Dict[str, Any]]:
+        """List all configurations with their information.
         
         Returns:
-            list[str]: Names of all registered services
+            List of configuration information dictionaries
         """
-        return list(cls._services.keys()) 
+        configs_info = []
+        for name, config in self._configs.items():
+            info = {
+                "name": name,
+                "type": config.provider_type,
+                "model": config.model_name,
+                "provider_name": config.provider_name,
+                "is_default": (name == self._default_config)
+            }
+            configs_info.append(info)
+        return configs_info
+    
+    def set_default_config(self, name: str) -> bool:
+        """Set the default configuration.
+        
+        Args:
+            name: Name of the configuration to set as default
+            
+        Returns:
+            True if successful, False if configuration not found
+        """
+        if name not in self._configs:
+            logger.error(f"Cannot set default config: '{name}' not found")
+            return False
+        
+        self._default_config = name
+        logger.info(f"Set default config to: {name}")
+        return True
+    
+    def remove_config(self, name: str) -> bool:
+        """Remove a configuration from the registry.
+        
+        Args:
+            name: Name of the configuration to remove
+            
+        Returns:
+            True if successful, False if configuration not found
+        """
+        if name not in self._configs:
+            return False
+        
+        # Don't allow removing the default config if it's the only one
+        if len(self._configs) == 1:
+            logger.warning("Cannot remove the last configuration")
+            return False
+        
+        removed_config = self._configs.pop(name)
+        logger.info(f"Removed config: {name}")
+        
+        # Update default config if necessary
+        if name == self._default_config:
+            # Set first available config as default
+            self._default_config = next(iter(self._configs.keys()))
+            logger.info(f"Updated default config to: {self._default_config}")
+        
+        return True
+    
+    def clear_configs(self) -> None:
+        """Clear all configurations."""
+        self._configs.clear()
+        self._default_config = None
+        logger.info("Cleared all LLM configurations")
+    
+    def get_registry_info(self) -> Dict[str, Any]:
+        """Get registry information.
+        
+        Returns:
+            Dictionary containing registry status and information
+        """
+        return {
+            "total_configs": len(self._configs),
+            "default_config": self._default_config,
+            "available_provider_types": list(set(c.provider_type for c in self._configs.values())),
+            "configs": self.list_configs()
+        }
+
+
+# Global registry instance
+def get_llm_registry() -> LLMRegistry:
+    """Get the global LLM registry instance."""
+    return LLMRegistry()
+
+
+# Convenience functions
+def add_llm_config(name: str, config: LLMConfig) -> None:
+    """Add a configuration to the global registry."""
+    get_llm_registry().add_config(name, config)
+
+
+def get_llm_config(name: Optional[str] = None) -> Optional[LLMConfig]:
+    """Get a configuration from the global registry."""
+    return get_llm_registry().get_config(name)
+
+
+def list_llm_configs() -> List[Dict[str, Any]]:
+    """List all configurations from the global registry."""
+    return get_llm_registry().list_configs() 
