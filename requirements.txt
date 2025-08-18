@@ -15,6 +15,8 @@ psycopg2-binary
 langchain
 langchain-community
 langchain-openai
+langchain-pinecone
+boto3
 websockets
 requests
 patchright
