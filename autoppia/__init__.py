@@ -7,7 +7,7 @@ with support for multiple LLM providers, integrations, and deployment options.
 Quick Start:
     from autoppia import AutomataAgent, AutomataClient
     from autoppia.workers import AIWorker, WorkerConfig
-    from autoppia.llms import LLMRegistry, OpenAIService, GoogleGeminiService
+    from autoppia.llms import LLMRegistry, LLMProviderConfig, create_openai_provider
     
     # Create an agent
     agent = AutomataAgent(api_key="your-api-key")
@@ -29,18 +29,18 @@ from .src.workers.interface import AIWorker, WorkerConfig
 from .src.workers.worker_api import WorkerAPI
 from .src.workers.router import WorkerRouter
 
-# LLM services
+# LLM services (framework-agnostic)
 from .src.llms.registry import LLMRegistry
+from .src.llms.interface import LLMProviderInterface, LLMProviderConfig
 from .src.llms.providers import (
-    OpenAIService, 
-    AnthropicService, 
-    GoogleGeminiService,
-    CohereService,
-    HuggingFaceService,
-    OllamaService,
-    LocalLLMService
+    OpenAIProvider,
+    AnthropicProvider,
+    GoogleGeminiProvider,
+    CohereProvider,
+    HuggingFaceProvider,
+    OllamaProvider,
+    LocalLLMProvider
 )
-from .src.llms.interface import LLMServiceInterface
 
 # Integration system
 from .src.integrations.interface import IntegrationInterface
@@ -66,16 +66,17 @@ __all__ = [
     "WorkerAPI",
     "WorkerRouter",
     
-    # LLM services
+    # LLM services (framework-agnostic)
     "LLMRegistry",
-    "OpenAIService",
-    "AnthropicService",
-    "GoogleGeminiService",
-    "CohereService",
-    "HuggingFaceService",
-    "OllamaService",
-    "LocalLLMService",
-    "LLMServiceInterface",
+    "LLMProviderInterface",
+    "LLMProviderConfig",
+    "OpenAIProvider",
+    "AnthropicProvider",
+    "GoogleGeminiProvider",
+    "CohereProvider",
+    "HuggingFaceProvider",
+    "OllamaProvider",
+    "LocalLLMProvider",
     
     # Integration system
     "IntegrationInterface",

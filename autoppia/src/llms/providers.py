@@ -1,420 +1,450 @@
 """
-LLM Service Providers for Autoppia SDK
+Framework-Agnostic LLM Providers for Autoppia SDK
 
-This module provides implementations for various language model providers
-including OpenAI, Anthropic, Google Gemini, Cohere, and HuggingFace.
+This module provides implementations for various LLM providers that are not tied
+to any specific framework. Each provider focuses on configuration management,
+credential validation, and framework adapter creation.
 """
 
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_cohere import ChatCohere
-from langchain_huggingface import HuggingFaceEndpoint
-from langchain.schema.language_model import BaseLanguageModel
-from autoppia.src.llms.interface import LLMServiceInterface
+import os
+import logging
+from typing import Dict, Any, Optional
+from .interface import LLMProviderInterface, LLMProviderConfig, LLMProviderFactory
+
+logger = logging.getLogger(__name__)
 
 
-class OpenAIService(LLMServiceInterface):
-    """OpenAI language model service implementation.
+class OpenAIProvider(LLMProviderInterface):
+    """OpenAI LLM provider implementation.
     
-    This class provides an interface to OpenAI's language models through the LangChain
-    integration. It handles model initialization, API key management, and model updates.
-    
-    Attributes:
-        api_key (str): OpenAI API key for authentication
-        model (str): Name of the OpenAI model to use (default: "gpt-4o")
-        _llm (BaseLanguageModel): Cached LangChain ChatOpenAI instance
+    Supports OpenAI's GPT models with framework-agnostic configuration.
     """
-
-    def __init__(self, api_key: str, model: str = "gpt-4o"):
-        """Initialize the OpenAI service.
-        
-        Args:
-            api_key (str): OpenAI API key for authentication
-            model (str, optional): Name of the OpenAI model. Defaults to "gpt-4o"
-        """
-        self.api_key = api_key
-        self.model = model
-        self._llm = None
-
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain ChatOpenAI instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain ChatOpenAI instance
-        """
-        if not self._llm:
-            self._llm = ChatOpenAI(model=self.model, api_key=self.api_key)
-        return self._llm
-
-    def update_model(self, model_name: str) -> None:
-        """Update the model name and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model name to use
-        """
-        self.model = model_name
-        self._llm = None
-
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key and reset the LLM instance.
-        
-        Args:
-            api_key (str): New API key to use
-        """
-        self.api_key = api_key
-        self._llm = None
-
-
-class AnthropicService(LLMServiceInterface):
-    """Anthropic language model service implementation.
     
-    This class provides an interface to Anthropic's language models through the LangChain
-    integration. It handles model initialization, API key management, and model updates.
+    def _validate_config(self) -> None:
+        """Validate OpenAI-specific configuration."""
+        if not self.config.api_key.startswith("sk-"):
+            raise ValueError("Invalid OpenAI API key format. Must start with 'sk-'")
+        
+        # Validate model name format
+        valid_models = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
+        if self.config.model_name not in valid_models:
+            logger.warning(f"Model {self.config.model_name} may not be supported")
     
-    Attributes:
-        api_key (str): Anthropic API key for authentication
-        model (str): Name of the Anthropic model to use (default: "claude-3-opus-20240229")
-        _llm (BaseLanguageModel): Cached LangChain ChatAnthropic instance
+    def validate_credentials(self) -> bool:
+        """Validate OpenAI API credentials."""
+        try:
+            # Simple validation - check if API key format is correct
+            # In production, you might want to make a test API call
+            return self.config.api_key.startswith("sk-") and len(self.config.api_key) > 20
+        except Exception as e:
+            logger.error(f"OpenAI credential validation failed: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get OpenAI provider information."""
+        return {
+            "provider": "OpenAI",
+            "website": "https://openai.com",
+            "api_docs": "https://platform.openai.com/docs",
+            "supported_models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+            "features": ["chat", "completion", "embeddings", "assistants"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for OpenAI."""
+        try:
+            from langchain_openai import ChatOpenAI
+            
+            return ChatOpenAI(
+                model=self.config.model_name,
+                openai_api_key=self.config.api_key,
+                openai_api_base=self.config.api_base
+            )
+        except ImportError:
+            raise ImportError("langchain-openai is required for LangChain adapter")
+    
+    def create_openai_assistants_adapter(self) -> Any:
+        """Create OpenAI Assistants adapter."""
+        try:
+            from openai import OpenAI
+            
+            return OpenAI(
+                api_key=self.config.api_key,
+                base_url=self.config.api_base
+            )
+        except ImportError:
+            raise ImportError("openai is required for OpenAI Assistants adapter")
+
+
+class AnthropicProvider(LLMProviderInterface):
+    """Anthropic LLM provider implementation.
+    
+    Supports Anthropic's Claude models with framework-agnostic configuration.
     """
-
-    def __init__(self, api_key: str, model: str = "claude-3-opus-20240229"):
-        """Initialize the Anthropic service.
-        
-        Args:
-            api_key (str): Anthropic API key for authentication
-            model (str, optional): Name of the Anthropic model. Defaults to "claude-3-opus-20240229"
-        """
-        self.api_key = api_key
-        self.model = model
-        self._llm = None
-
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain ChatAnthropic instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain ChatAnthropic instance
-        """
-        if not self._llm:
-            self._llm = ChatAnthropic(model=self.model, anthropic_api_key=self.api_key)
-        return self._llm
-
-    def update_model(self, model_name: str) -> None:
-        """Update the model name and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model name to use
-        """
-        self.model = model_name
-        self._llm = None
-
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key and reset the LLM instance.
-        
-        Args:
-            api_key (str): New API key to use
-        """
-        self.api_key = api_key
-        self._llm = None
-
-
-class GoogleGeminiService(LLMServiceInterface):
-    """Google Gemini language model service implementation.
     
-    This class provides an interface to Google's Gemini models through the LangChain
-    integration. It handles model initialization, API key management, and model updates.
+    def _validate_config(self) -> None:
+        """Validate Anthropic-specific configuration."""
+        if not self.config.api_key.startswith("sk-ant-"):
+            raise ValueError("Invalid Anthropic API key format. Must start with 'sk-ant-'")
     
-    Attributes:
-        api_key (str): Google AI API key for authentication
-        model (str): Name of the Gemini model to use (default: "gemini-pro")
-        _llm (BaseLanguageModel): Cached LangChain ChatGoogleGenerativeAI instance
+    def validate_credentials(self) -> bool:
+        """Validate Anthropic API credentials."""
+        try:
+            return self.config.api_key.startswith("sk-ant-") and len(self.config.api_key) > 20
+        except Exception as e:
+            logger.error(f"Anthropic credential validation failed: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get Anthropic provider information."""
+        return {
+            "provider": "Anthropic",
+            "website": "https://anthropic.com",
+            "api_docs": "https://docs.anthropic.com",
+            "supported_models": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"],
+            "features": ["chat", "completion", "vision"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for Anthropic."""
+        try:
+            from langchain_anthropic import ChatAnthropic
+            
+            return ChatAnthropic(
+                model=self.config.model_name,
+                anthropic_api_key=self.config.api_key
+            )
+        except ImportError:
+            raise ImportError("langchain-anthropic is required for LangChain adapter")
+
+
+class GoogleGeminiProvider(LLMProviderInterface):
+    """Google Gemini LLM provider implementation.
+    
+    Supports Google's Gemini models with framework-agnostic configuration.
     """
-
-    def __init__(self, api_key: str, model: str = "gemini-pro"):
-        """Initialize the Google Gemini service.
-        
-        Args:
-            api_key (str): Google AI API key for authentication
-            model (str, optional): Name of the Gemini model. Defaults to "gemini-pro"
-        """
-        self.api_key = api_key
-        self.model = model
-        self._llm = None
-
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain ChatGoogleGenerativeAI instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain ChatGoogleGenerativeAI instance
-        """
-        if not self._llm:
-            self._llm = ChatGoogleGenerativeAI(
-                model=self.model,
-                google_api_key=self.api_key,
+    
+    def _validate_config(self) -> None:
+        """Validate Google Gemini-specific configuration."""
+        if not self.config.api_key.startswith("AIza"):
+            raise ValueError("Invalid Google API key format. Must start with 'AIza'")
+    
+    def validate_credentials(self) -> bool:
+        """Validate Google API credentials."""
+        try:
+            return self.config.api_key.startswith("AIza") and len(self.config.api_key) > 20
+        except Exception as e:
+            logger.error(f"Google Gemini credential validation failed: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get Google Gemini provider information."""
+        return {
+            "provider": "Google Gemini",
+            "website": "https://ai.google.dev",
+            "api_docs": "https://ai.google.dev/docs",
+            "supported_models": ["gemini-pro", "gemini-pro-vision", "gemini-1.5-pro"],
+            "features": ["chat", "completion", "vision", "multimodal"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for Google Gemini."""
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            
+            return ChatGoogleGenerativeAI(
+                model=self.config.model_name,
+                google_api_key=self.config.api_key,
                 convert_system_message_to_human=True
             )
-        return self._llm
-
-    def update_model(self, model_name: str) -> None:
-        """Update the model name and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model name to use
-        """
-        self.model = model_name
-        self._llm = None
-
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key and reset the LLM instance.
-        
-        Args:
-            api_key (str): New API keyemis to use
-        """
-        self.api_key = api_key
-        self._llm = None
+        except ImportError:
+            raise ImportError("langchain-google-genai is required for LangChain adapter")
 
 
-class CohereService(LLMServiceInterface):
-    """Cohere language model service implementation.
+class CohereProvider(LLMProviderInterface):
+    """Cohere LLM provider implementation.
     
-    This class provides an interface to Cohere's language models through the LangChain
-    integration. It handles model initialization, API key management, and model updates.
-    
-    Attributes:
-        api_key (str): Cohere API key for authentication
-        model (str): Name of the Cohere model to use (default: "command")
-        _llm (BaseLanguageModel): Cached LangChain ChatCohere instance
+    Supports Cohere's language models with framework-agnostic configuration.
     """
-
-    def __init__(self, api_key: str, model: str = "command"):
-        """Initialize the Cohere service.
-        
-        Args:
-            api_key (str): Cohere API key for authentication
-            model (str, optional): Name of the Cohere model. Defaults to "command"
-        """
-        self.api_key = api_key
-        self.model = model
-        self._llm = None
-
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain ChatCohere instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain ChatCohere instance
-        """
-        if not self._llm:
-            self._llm = ChatCohere(
-                model=self.model,
-                cohere_api_key=self.api_key
+    
+    def _validate_config(self) -> None:
+        """Validate Cohere-specific configuration."""
+        # Cohere API keys don't have a specific prefix, just check length
+        if len(self.config.api_key) < 10:
+            raise ValueError("Invalid Cohere API key format")
+    
+    def validate_credentials(self) -> bool:
+        """Validate Cohere API credentials."""
+        try:
+            return len(self.config.api_key) >= 10
+        except Exception as e:
+            logger.error(f"Cohere credential validation failed: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get Cohere provider information."""
+        return {
+            "provider": "Cohere",
+            "website": "https://cohere.com",
+            "api_docs": "https://docs.cohere.com",
+            "supported_models": ["command", "command-light", "command-nightly"],
+            "features": ["chat", "completion", "embeddings", "rerank"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for Cohere."""
+        try:
+            from langchain_cohere import ChatCohere
+            
+            return ChatCohere(
+                model=self.config.model_name,
+                cohere_api_key=self.config.api_key
             )
-        return self._llm
-
-    def update_model(self, model_name: str) -> None:
-        """Update the model name and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model name to use
-        """
-        self.model = model_name
-        self._llm = None
-
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key and reset the LLM instance.
-        
-        Args:
-            api_key (str): New API key to use
-        """
-        self.api_key = api_key
-        self._llm = None
+        except ImportError:
+            raise ImportError("langchain-cohere is required for LangChain adapter")
 
 
-class HuggingFaceService(LLMServiceInterface):
-    """HuggingFace language model service implementation.
+class HuggingFaceProvider(LLMProviderInterface):
+    """HuggingFace LLM provider implementation.
     
-    This class provides an interface to HuggingFace's language models through the LangChain
-    integration. It handles model initialization, API key management, and model updates.
-    
-    Attributes:
-        api_key (str): HuggingFace API key for authentication
-        model (str): Name of the HuggingFace model to use
-        endpoint_url (str): HuggingFace endpoint URL
-        _llm (BaseLanguageModel): Cached LangChain HuggingFaceEndpoint instance
+    Supports HuggingFace models with framework-agnostic configuration.
     """
-
-    def __init__(self, api_key: str, model: str, endpoint_url: str = None):
-        """Initialize the HuggingFace service.
-        
-        Args:
-            api_key (str): HuggingFace API key for authentication
-            model (str): Name of the HuggingFace model to use
-            endpoint_url (str, optional): Custom endpoint URL. Defaults to None.
-        """
-        self.api_key = api_key
-        self.model = model
-        self.endpoint_url = endpoint_url
-        self._llm = None
-
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain HuggingFaceEndpoint instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain HuggingFaceEndpoint instance
-        """
-        if not self._llm:
+    
+    def _validate_config(self) -> None:
+        """Validate HuggingFace-specific configuration."""
+        if not self.config.api_key.startswith("hf_"):
+            raise ValueError("Invalid HuggingFace API key format. Must start with 'hf_'")
+    
+    def validate_credentials(self) -> bool:
+        """Validate HuggingFace API credentials."""
+        try:
+            return self.config.api_key.startswith("hf_") and len(self.config.api_key) > 10
+        except Exception as e:
+            logger.error(f"HuggingFace credential validation failed: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get HuggingFace provider information."""
+        return {
+            "provider": "HuggingFace",
+            "website": "https://huggingface.co",
+            "api_docs": "https://huggingface.co/docs/api-inference",
+            "supported_models": ["Any HuggingFace model"],
+            "features": ["chat", "completion", "embeddings", "custom_models"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for HuggingFace."""
+        try:
+            from langchain_huggingface import HuggingFaceEndpoint
+            
             kwargs = {
-                "huggingfacehub_api_token": self.api_key,
+                "huggingfacehub_api_token": self.config.api_key,
                 "task": "text-generation"
             }
             
-            if self.endpoint_url:
-                kwargs["endpoint_url"] = self.endpoint_url
+            if self.config.api_base:
+                kwargs["endpoint_url"] = self.config.api_base
             
-            self._llm = HuggingFaceEndpoint(**kwargs)
-        return self._llm
-
-    def update_model(self, model_name: str) -> None:
-        """Update the model name and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model name to use
-        """
-        self.model = model_name
-        self._llm = None
-
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key and reset the LLM instance.
-        
-        Args:
-            api_key (str): New API key to use
-        """
-        self.api_key = api_key
-        self._llm = None
+            return HuggingFaceEndpoint(**kwargs)
+        except ImportError:
+            raise ImportError("langchain-huggingface is required for LangChain adapter")
 
 
-class OllamaService(LLMServiceInterface):
-    """Ollama local language model service implementation.
+class OllamaProvider(LLMProviderInterface):
+    """Ollama local LLM provider implementation.
     
-    This class provides an interface to Ollama's local language models through the LangChain
-    integration. It handles model initialization and model updates.
-    
-    Attributes:
-        model (str): Name of the Ollama model to use (default: "llama2")
-        base_url (str): Ollama base URL (default: "http://localhost:11434")
-        _llm (BaseLanguageModel): Cached LangChain Ollama instance
+    Supports local Ollama models with framework-agnostic configuration.
     """
+    
+    def _validate_config(self) -> None:
+        """Validate Ollama-specific configuration."""
+        # Ollama doesn't require API keys, just model names
+        if not self.config.model_name:
+            raise ValueError("Ollama model name is required")
+    
+    def validate_credentials(self) -> bool:
+        """Validate Ollama configuration (no API key needed)."""
+        try:
+            # Check if Ollama server is accessible
+            import requests
+            base_url = self.config.api_base or "http://localhost:11434"
+            response = requests.get(f"{base_url}/api/tags", timeout=5)
+            return response.status_code == 200
+        except Exception as e:
+            logger.warning(f"Ollama server not accessible: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get Ollama provider information."""
+        return {
+            "provider": "Ollama",
+            "website": "https://ollama.ai",
+            "api_docs": "https://github.com/ollama/ollama/blob/main/docs/api.md",
+            "supported_models": ["llama2", "codellama", "mistral", "neural-chat"],
+            "features": ["local_inference", "no_api_key", "custom_models"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for Ollama."""
+        try:
+            from langchain_community.llms import Ollama
+            
+            return Ollama(
+                model=self.config.model_name,
+                base_url=self.config.api_base or "http://localhost:11434"
+            )
+        except ImportError:
+            raise ImportError("langchain-community is required for LangChain adapter")
 
-    def __init__(self, model: str = "llama2", base_url: str = "http://localhost:11434"):
-        """Initialize the Ollama service.
-        
-        Args:
-            model (str, optional): Name of the Ollama model. Defaults to "llama2"
-            base_url (str, optional): Ollama base URL. Defaults to "http://localhost:11434"
-        """
-        self.model = model
-        self.base_url = base_url
-        self._llm = None
 
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain Ollama instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain Ollama instance
-        """
-        if not self._llm:
-            try:
-                from langchain_community.llms import Ollama
-                self._llm = Ollama(
-                    model=self.model,
-                    base_url=self.base_url
+class LocalLLMProvider(LLMProviderInterface):
+    """Local LLM provider implementation.
+    
+    Supports local models (Llama, GPT4All) with framework-agnostic configuration.
+    """
+    
+    def _validate_config(self) -> None:
+        """Validate local LLM-specific configuration."""
+        if not self.config.provider_config or "model_path" not in self.config.provider_config:
+            raise ValueError("Local LLM requires model_path in provider_config")
+    
+    def validate_credentials(self) -> bool:
+        """Validate local LLM configuration."""
+        try:
+            model_path = self.config.provider_config.get("model_path")
+            return model_path and os.path.exists(model_path)
+        except Exception as e:
+            logger.error(f"Local LLM validation failed: {e}")
+            return False
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """Get local LLM provider information."""
+        return {
+            "provider": "Local LLM",
+            "website": "N/A",
+            "api_docs": "N/A",
+            "supported_models": ["llama", "gpt4all", "custom"],
+            "features": ["offline_inference", "no_api_key", "full_control"]
+        }
+    
+    def create_langchain_adapter(self) -> Any:
+        """Create LangChain adapter for local LLM."""
+        try:
+            model_type = self.config.provider_config.get("model_type", "llama")
+            model_path = self.config.provider_config.get("model_path")
+            
+            if model_type.lower() == "llama":
+                from langchain_community.llms import LlamaCpp
+                return LlamaCpp(
+                    model_path=model_path,
+                    n_ctx=2048,
+                    n_threads=4
                 )
-            except ImportError:
-                raise ImportError("langchain-community is required for Ollama support")
-        return self._llm
-
-    def update_model(self, model_name: str) -> None:
-        """Update the model name and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model name to use
-        """
-        self.model = model_name
-        self._llm = None
-
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key (not applicable for Ollama).
-        
-        Args:
-            api_key (str): API key (ignored for Ollama)
-        """
-        # Ollama doesn't use API keys
-        pass
+            elif model_type.lower() == "gpt4all":
+                from langchain_community.llms import GPT4All
+                return GPT4All(
+                    model=model_path,
+                    n_threads=4
+                )
+            else:
+                raise ValueError(f"Unsupported local model type: {model_type}")
+        except ImportError:
+            raise ImportError("langchain-community is required for LangChain adapter")
 
 
-class LocalLLMService(LLMServiceInterface):
-    """Local language model service implementation.
-    
-    This class provides an interface to local language models through the LangChain
-    integration. It handles model initialization and model updates.
-    
-    Attributes:
-        model_path (str): Path to the local model
-        model_type (str): Type of local model (e.g., "llama", "gpt4all")
-        _llm (BaseLanguageModel): Cached LangChain local model instance
-    """
+# Register all providers with the factory
+LLMProviderFactory.register_provider("openai", OpenAIProvider)
+LLMProviderFactory.register_provider("anthropic", AnthropicProvider)
+LLMProviderFactory.register_provider("google", GoogleGeminiProvider)
+LLMProviderFactory.register_provider("cohere", CohereProvider)
+LLMProviderFactory.register_provider("huggingface", HuggingFaceProvider)
+LLMProviderFactory.register_provider("ollama", OllamaProvider)
+LLMProviderFactory.register_provider("local", LocalLLMProvider)
 
-    def __init__(self, model_path: str, model_type: str = "llama"):
-        """Initialize the local LLM service.
-        
-        Args:
-            model_path (str): Path to the local model
-            model_type (str, optional): Type of local model. Defaults to "llama"
-        """
-        self.model_path = model_path
-        self.model_type = model_type
-        self._llm = None
 
-    def get_llm(self) -> BaseLanguageModel:
-        """Get or create the LangChain local model instance.
-        
-        Returns:
-            BaseLanguageModel: Configured LangChain local model instance
-        """
-        if not self._llm:
-            try:
-                if self.model_type.lower() == "llama":
-                    from langchain_community.llms import LlamaCpp
-                    self._llm = LlamaCpp(
-                        model_path=self.model_path,
-                        n_ctx=2048,
-                        n_threads=4
-                    )
-                elif self.model_type.lower() == "gpt4all":
-                    from langchain_community.llms import GPT4All
-                    self._llm = GPT4All(
-                        model=self.model_path,
-                        n_threads=4
-                    )
-                else:
-                    raise ValueError(f"Unsupported local model type: {self.model_type}")
-            except ImportError:
-                raise ImportError("langchain-community is required for local model support")
-        return self._llm
+# Convenience functions for backward compatibility
+def create_openai_provider(api_key: str, model: str = "gpt-4o", **kwargs) -> OpenAIProvider:
+    """Create an OpenAI provider instance."""
+    config = LLMProviderConfig(
+        provider_name="openai",
+        provider_type="openai",
+        api_key=api_key,
+        model_name=model,
+        **kwargs
+    )
+    return OpenAIProvider(config)
 
-    def update_model(self, model_name: str) -> None:
-        """Update the model path and reset the LLM instance.
-        
-        Args:
-            model_name (str): New model path to use
-        """
-        self.model_path = model_name
-        self._llm = None
 
-    def update_api_key(self, api_key: str) -> None:
-        """Update the API key (not applicable for local models).
-        
-        Args:
-            api_key (str): API key (ignored for local models)
-        """
-        # Local models don't use API keys
-        pass 
+def create_anthropic_provider(api_key: str, model: str = "claude-3-opus-20240229", **kwargs) -> AnthropicProvider:
+    """Create an Anthropic provider instance."""
+    config = LLMProviderConfig(
+        provider_name="anthropic",
+        provider_type="anthropic",
+        api_key=api_key,
+        model_name=model,
+        **kwargs
+    )
+    return AnthropicProvider(config)
+
+
+def create_gemini_provider(api_key: str, model: str = "gemini-pro", **kwargs) -> GoogleGeminiProvider:
+    """Create a Google Gemini provider instance."""
+    config = LLMProviderConfig(
+        provider_name="gemini",
+        provider_type="google",
+        api_key=api_key,
+        model_name=model,
+        **kwargs
+    )
+    return GoogleGeminiProvider(config)
+
+
+def create_cohere_provider(api_key: str, model: str = "command", **kwargs) -> CohereProvider:
+    """Create a Cohere provider instance."""
+    config = LLMProviderConfig(
+        provider_name="cohere",
+        provider_type="cohere",
+        api_key=api_key,
+        model_name=model,
+        **kwargs
+    )
+    return CohereProvider(config)
+
+
+def create_huggingface_provider(api_key: str, model: str, **kwargs) -> HuggingFaceProvider:
+    """Create a HuggingFace provider instance."""
+    config = LLMProviderConfig(
+        provider_name="huggingface",
+        provider_type="huggingface",
+        api_key=api_key,
+        model_name=model,
+        **kwargs
+    )
+    return HuggingFaceProvider(config)
+
+
+def create_ollama_provider(model: str = "llama2", base_url: str = "http://localhost:11434", **kwargs) -> OllamaProvider:
+    """Create an Ollama provider instance."""
+    config = LLMProviderConfig(
+        provider_name="ollama",
+        provider_type="ollama",
+        api_key="",  # Ollama doesn't need API key
+        model_name=model,
+        api_base=base_url,
+        **kwargs
+    )
+    return OllamaProvider(config)
+
+
+def create_local_provider(model_path: str, model_type: str = "llama", **kwargs) -> LocalLLMProvider:
+    """Create a local LLM provider instance."""
+    config = LLMProviderConfig(
+        provider_name="local",
+        provider_type="local",
+        api_key="",  # Local models don't need API key
+        model_name=model_type,
+        provider_config={"model_path": model_path, "model_type": model_type},
+        **kwargs
+    )
+    return LocalLLMProvider(config) 
