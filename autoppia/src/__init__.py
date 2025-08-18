@@ -17,7 +17,6 @@ from .workers.router import WorkerRouter
 from .workers.adapter import AIWorkerConfigAdapter
 
 from .llms.interface import LLMServiceInterface
-from .llms.providers import OpenAIService, AnthropicService
 from .llms.registry import LLMRegistry
 from .llms.adapter import LLMAdapter
 
@@ -36,8 +35,6 @@ __all__ = [
     
     # LLMs
     "LLMServiceInterface",
-    "OpenAIService",
-    "AnthropicService",
     "LLMRegistry",
     "LLMAdapter",
     

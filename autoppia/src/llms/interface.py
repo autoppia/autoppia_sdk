@@ -24,13 +24,13 @@ class LLMConfig:
     
     # Authentication
     api_key: str
-    api_base: Optional[str] = None  # Custom API base URL
     
     # Model configuration
     model_name: str
-    model_version: Optional[str] = None
     
-    # Provider-specific configuration
+    # Optional fields with defaults
+    api_base: Optional[str] = None  # Custom API base URL
+    model_version: Optional[str] = None
     provider_config: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
@@ -151,3 +151,43 @@ class LLMProvider(ABC):
             return self.validate_credentials()
         except Exception:
             return False
+
+
+class LLMServiceInterface(ABC):
+    """
+    Abstract base class for LLM service implementations.
+    
+    This interface defines the required methods that all LLM service implementations
+    must provide to be compatible with the Autoppia SDK.
+    """
+    
+    @abstractmethod
+    def generate_response(self, prompt: str, **kwargs) -> str:
+        """Generate a response from the LLM service.
+        
+        Args:
+            prompt: The input prompt to send to the LLM
+            **kwargs: Additional parameters for the LLM call
+            
+        Returns:
+            str: The generated response from the LLM
+        """
+        pass
+    
+    @abstractmethod
+    def is_available(self) -> bool:
+        """Check if the LLM service is available and accessible.
+        
+        Returns:
+            bool: True if the service is available, False otherwise
+        """
+        pass
+    
+    @abstractmethod
+    def get_model_info(self) -> Dict[str, Any]:
+        """Get information about the LLM model being used.
+        
+        Returns:
+            Dict containing model information
+        """
+        pass

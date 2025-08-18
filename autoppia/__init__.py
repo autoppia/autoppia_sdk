@@ -31,16 +31,8 @@ from .src.workers.router import WorkerRouter
 
 # LLM services (framework-agnostic)
 from .src.llms.registry import LLMRegistry
-from .src.llms.interface import LLMProviderInterface, LLMProviderConfig
-from .src.llms.providers import (
-    OpenAIProvider,
-    AnthropicProvider,
-    GoogleGeminiProvider,
-    CohereProvider,
-    HuggingFaceProvider,
-    OllamaProvider,
-    LocalLLMProvider
-)
+from .src.llms.interface import LLMServiceInterface
+from .src.llms.providers import SimpleLLMProvider
 
 # Integration system
 from .src.integrations.interface import IntegrationInterface
@@ -68,15 +60,8 @@ __all__ = [
     
     # LLM services (framework-agnostic)
     "LLMRegistry",
-    "LLMProviderInterface",
-    "LLMProviderConfig",
-    "OpenAIProvider",
-    "AnthropicProvider",
-    "GoogleGeminiProvider",
-    "CohereProvider",
-    "HuggingFaceProvider",
-    "OllamaProvider",
-    "LocalLLMProvider",
+    "LLMServiceInterface",
+    "SimpleLLMProvider",
     
     # Integration system
     "IntegrationInterface",
