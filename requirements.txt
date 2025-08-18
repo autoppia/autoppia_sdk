@@ -2,47 +2,36 @@
 python-dotenv
 httpx
 websockets
-asyncio-mqtt
 
 # LLM and AI dependencies
-langchain
-langchain-community
 langchain-openai
 langchain-anthropic
-langchain-google-genai
-langchain-cohere
-langchain-huggingface
 openai
 anthropic
-google-generativeai
-cohere
-huggingface-hub
-tiktoken
 
-# Web automation and browser control
-selenium
-playwright
-beautifulsoup4
-requests
+# Vector store dependencies
+langchain-community
+langchain-pinecone
+langchain-text-splitters
+pinecone-client
+
+# Document processing dependencies
+PyPDF2
+python-docx
+docx2txt
 
 # Database and storage
-pymongo
 psycopg2-binary
-redis
+boto3
 
-# Google services
-google-api-python-client
-google-auth-oauthlib
-google-auth
+# HTTP requests
+requests
 
-# Local model support
-llama-cpp-python
-gpt4all
-
-# Utilities
-python-dateutil
+# Data validation and serialization
 pydantic
-typing-extensions
+
+# Web automation
+patchright
 
 # Development dependencies (optional)
 # pytest>=7.4.0
