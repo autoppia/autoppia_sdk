@@ -1,287 +1,151 @@
 """
-Framework-Agnostic LLM Provider Registry for Autoppia SDK
+Simple LLM Configuration Registry for Autoppia SDK
 
-This module provides a centralized registry for managing LLM providers
-that is not tied to any specific framework implementation.
+This module provides a simple registry for managing LLM configurations
+without complex provider management or framework-specific implementations.
 """
 
 import logging
 from typing import Dict, Any, Optional, List
-from .interface import LLMProviderInterface, LLMProviderConfig, LLMProviderFactory
+from .interface import LLMConfig
 
 logger = logging.getLogger(__name__)
 
 
 class LLMRegistry:
     """
-    Centralized registry for managing LLM providers.
+    Simple registry for managing LLM configurations.
     
     This registry allows developers to:
-    1. Register and manage multiple LLM providers
-    2. Switch between different frameworks (LangChain, OpenAI Assistants, etc.)
-    3. Maintain provider configurations independently
-    4. Access providers by name or type
+    1. Store and retrieve LLM configurations
+    2. List available configurations
+    3. Set a default configuration
+    4. Basic validation of configurations
     """
     
-    _instance = None
-    _providers: Dict[str, LLMProviderInterface] = {}
-    _default_provider: Optional[str] = None
+    def __init__(self):
+        """Initialize the registry."""
+        self._configs: Dict[str, LLMConfig] = {}
+        self._default_config: Optional[str] = None
     
-    def __new__(cls):
-        """Ensure singleton pattern."""
-        if cls._instance is None:
-            cls._instance = super(LLMRegistry, cls).__new__(cls)
-        return cls._instance
-    
-    def register_provider(self, name: str, provider: LLMProviderInterface) -> None:
-        """Register an LLM provider with a name.
+    def add_config(self, name: str, config: LLMConfig) -> None:
+        """Add an LLM configuration to the registry.
         
         Args:
-            name: Unique name for the provider
-            provider: Provider instance to register
+            name: Unique name for the configuration
+            config: LLM configuration object
         """
-        if not isinstance(provider, LLMProviderInterface):
-            raise ValueError("Provider must implement LLMProviderInterface")
+        if not isinstance(config, LLMConfig):
+            raise ValueError("Config must be an LLMConfig instance")
         
-        self._providers[name] = provider
-        logger.info(f"Registered LLM provider: {name} ({provider.config.provider_type})")
+        self._configs[name] = config
+        logger.info(f"Added LLM config: {name} ({config.provider_type})")
         
         # Set as default if it's the first one
-        if self._default_provider is None:
-            self._default_provider = name
+        if self._default_config is None:
+            self._default_config = name
     
-    def register_provider_from_config(self, name: str, config: LLMProviderConfig) -> LLMProviderInterface:
-        """Register a provider using configuration.
+    def get_config(self, name: Optional[str] = None) -> Optional[LLMConfig]:
+        """Get a configuration by name.
         
         Args:
-            name: Unique name for the provider
-            config: Provider configuration
+            name: Configuration name (uses default if None)
             
         Returns:
-            Created provider instance
+            Configuration object or None if not found
         """
-        provider = LLMProviderFactory.create_provider(config)
-        self.register_provider(name, provider)
-        return provider
-    
-    def get_provider(self, name: Optional[str] = None) -> Optional[LLMProviderInterface]:
-        """Get a provider by name.
-        
-        Args:
-            name: Provider name (uses default if None)
-            
-        Returns:
-            Provider instance or None if not found
-        """
-        provider_name = name or self._default_provider
-        if not provider_name:
-            logger.warning("No default provider set")
+        config_name = name or self._default_config
+        if not config_name:
+            logger.warning("No default config set")
             return None
         
-        provider = self._providers.get(provider_name)
-        if not provider:
-            logger.warning(f"Provider '{provider_name}' not found")
+        config = self._configs.get(config_name)
+        if not config:
+            logger.warning(f"Config '{config_name}' not found")
             return None
         
-        return provider
+        return config
     
-    def get_provider_by_type(self, provider_type: str) -> Optional[LLMProviderInterface]:
-        """Get the first provider of a specific type.
-        
-        Args:
-            provider_type: Type of provider to find
-            
-        Returns:
-            Provider instance or None if not found
-        """
-        for provider in self._providers.values():
-            if provider.config.provider_type == provider_type:
-                return provider
-        return None
-    
-    def list_providers(self) -> List[Dict[str, Any]]:
-        """List all registered providers with their information.
+    def list_configs(self) -> List[Dict[str, Any]]:
+        """List all configurations with their information.
         
         Returns:
-            List of provider information dictionaries
+            List of configuration information dictionaries
         """
-        providers_info = []
-        for name, provider in self._providers.items():
+        configs_info = []
+        for name, config in self._configs.items():
             info = {
                 "name": name,
-                "type": provider.config.provider_type,
-                "model": provider.config.model_name,
-                "is_healthy": provider.is_healthy(),
-                "is_default": (name == self._default_provider)
+                "type": config.provider_type,
+                "model": config.model_name,
+                "provider_name": config.provider_name,
+                "is_default": (name == self._default_config)
             }
-            providers_info.append(info)
-        return providers_info
+            configs_info.append(info)
+        return configs_info
     
-    def set_default_provider(self, name: str) -> bool:
-        """Set the default provider.
+    def set_default_config(self, name: str) -> bool:
+        """Set the default configuration.
         
         Args:
-            name: Name of the provider to set as default
+            name: Name of the configuration to set as default
             
         Returns:
-            True if successful, False if provider not found
+            True if successful, False if configuration not found
         """
-        if name not in self._providers:
-            logger.error(f"Cannot set default provider: '{name}' not found")
+        if name not in self._configs:
+            logger.error(f"Cannot set default config: '{name}' not found")
             return False
         
-        self._default_provider = name
-        logger.info(f"Set default provider to: {name}")
+        self._default_config = name
+        logger.info(f"Set default config to: {name}")
         return True
     
-    def remove_provider(self, name: str) -> bool:
-        """Remove a provider from the registry.
+    def remove_config(self, name: str) -> bool:
+        """Remove a configuration from the registry.
         
         Args:
-            name: Name of the provider to remove
+            name: Name of the configuration to remove
             
         Returns:
-            True if successful, False if provider not found
+            True if successful, False if configuration not found
         """
-        if name not in self._providers:
+        if name not in self._configs:
             return False
         
-        # Don't allow removing the default provider if it's the only one
-        if len(self._providers) == 1:
-            logger.warning("Cannot remove the last provider")
+        # Don't allow removing the default config if it's the only one
+        if len(self._configs) == 1:
+            logger.warning("Cannot remove the last configuration")
             return False
         
-        removed_provider = self._providers.pop(name)
-        logger.info(f"Removed provider: {name}")
+        removed_config = self._configs.pop(name)
+        logger.info(f"Removed config: {name}")
         
-        # Update default provider if necessary
-        if name == self._default_provider:
-            # Set first available provider as default
-            self._default_provider = next(iter(self._providers.keys()))
-            logger.info(f"Updated default provider to: {self._default_provider}")
+        # Update default config if necessary
+        if name == self._default_config:
+            # Set first available config as default
+            self._default_config = next(iter(self._configs.keys()))
+            logger.info(f"Updated default config to: {self._default_config}")
         
         return True
     
-    def clear_providers(self) -> None:
-        """Clear all registered providers."""
-        self._providers.clear()
-        self._default_provider = None
-        logger.info("Cleared all LLM providers")
-    
-    def get_provider_status(self, name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Get comprehensive status of a provider.
-        
-        Args:
-            name: Provider name (uses default if None)
-            
-        Returns:
-            Provider status dictionary or None if not found
-        """
-        provider = self.get_provider(name)
-        if not provider:
-            return None
-        
-        status = provider.get_status()
-        status["registry_name"] = name or self._default_provider
-        status["is_default"] = (name or self._default_provider) == self._default_provider
-        return status
-    
-    def validate_all_providers(self) -> Dict[str, bool]:
-        """Validate all registered providers.
-        
-        Returns:
-            Dictionary mapping provider names to validation status
-        """
-        validation_results = {}
-        for name, provider in self._providers.items():
-            try:
-                is_valid = provider.validate_credentials()
-                validation_results[name] = is_valid
-                logger.info(f"Provider '{name}' validation: {'✅' if is_valid else '❌'}")
-            except Exception as e:
-                validation_results[name] = False
-                logger.error(f"Provider '{name}' validation failed: {e}")
-        
-        return validation_results
-    
-    def get_available_frameworks(self, name: Optional[str] = None) -> List[str]:
-        """Get available frameworks for a provider.
-        
-        Args:
-            name: Provider name (uses default if None)
-            
-        Returns:
-            List of available framework names
-        """
-        provider = self.get_provider(name)
-        if not provider:
-            return []
-        
-        frameworks = []
-        
-        # Check which framework adapters are available
-        try:
-            provider.create_langchain_adapter()
-            frameworks.append("langchain")
-        except (ImportError, NotImplementedError):
-            pass
-        
-        try:
-            provider.create_openai_assistants_adapter()
-            frameworks.append("openai_assistants")
-        except (ImportError, NotImplementedError):
-            pass
-        
-        try:
-            provider.create_llamaindex_adapter()
-            frameworks.append("llamaindex")
-        except (ImportError, NotImplementedError):
-            pass
-        
-        return frameworks
-    
-    def create_framework_adapter(self, framework: str, name: Optional[str] = None, **kwargs) -> Any:
-        """Create a framework-specific adapter for a provider.
-        
-        Args:
-            framework: Framework name (langchain, openai_assistants, llamaindex)
-            name: Provider name (uses default if None)
-            **kwargs: Additional framework-specific arguments
-            
-        Returns:
-            Framework-specific adapter instance
-            
-        Raises:
-            ValueError: If framework is not supported
-            NotImplementedError: If adapter creation fails
-        """
-        provider = self.get_provider(name)
-        if not provider:
-            raise ValueError(f"Provider '{name or 'default'}' not found")
-        
-        framework = framework.lower()
-        
-        if framework == "langchain":
-            return provider.create_langchain_adapter()
-        elif framework == "openai_assistants":
-            return provider.create_openai_assistants_adapter()
-        elif framework == "llamaindex":
-            return provider.create_llamaindex_adapter()
-        else:
-            return provider.create_custom_adapter(framework, **kwargs)
+    def clear_configs(self) -> None:
+        """Clear all configurations."""
+        self._configs.clear()
+        self._default_config = None
+        logger.info("Cleared all LLM configurations")
     
     def get_registry_info(self) -> Dict[str, Any]:
-        """Get comprehensive registry information.
+        """Get registry information.
         
         Returns:
             Dictionary containing registry status and information
         """
         return {
-            "total_providers": len(self._providers),
-            "default_provider": self._default_provider,
-            "available_provider_types": list(set(p.config.provider_type for p in self._providers.values())),
-            "providers": self.list_providers(),
-            "factory_supported_types": LLMProviderFactory.get_available_providers()
+            "total_configs": len(self._configs),
+            "default_config": self._default_config,
+            "available_provider_types": list(set(c.provider_type for c in self._configs.values())),
+            "configs": self.list_configs()
         }
 
 
@@ -291,17 +155,17 @@ def get_llm_registry() -> LLMRegistry:
     return LLMRegistry()
 
 
-# Convenience functions for backward compatibility
-def register_provider(name: str, provider: LLMProviderInterface) -> None:
-    """Register a provider with the global registry."""
-    get_llm_registry().register_provider(name, provider)
+# Convenience functions
+def add_llm_config(name: str, config: LLMConfig) -> None:
+    """Add a configuration to the global registry."""
+    get_llm_registry().add_config(name, config)
 
 
-def get_provider(name: Optional[str] = None) -> Optional[LLMProviderInterface]:
-    """Get a provider from the global registry."""
-    return get_llm_registry().get_provider(name)
+def get_llm_config(name: Optional[str] = None) -> Optional[LLMConfig]:
+    """Get a configuration from the global registry."""
+    return get_llm_registry().get_config(name)
 
 
-def create_framework_adapter(framework: str, name: Optional[str] = None, **kwargs) -> Any:
-    """Create a framework adapter from the global registry."""
-    return get_llm_registry().create_framework_adapter(framework, name, **kwargs) 
+def list_llm_configs() -> List[Dict[str, Any]]:
+    """List all configurations from the global registry."""
+    return get_llm_registry().list_configs() 

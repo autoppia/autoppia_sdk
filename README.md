@@ -54,18 +54,18 @@ print(f"Task completed: {result}")
 
 ```python
 from autoppia.src.workers import AIWorker, WorkerConfig
-from autoppia.src.llms import OpenAIService
+from autoppia.src.llms import SimpleLLMProvider, create_openai_provider
 
 # Define worker configuration
+llm_provider = create_openai_provider(
+    api_key="your-openai-key",
+    model="gpt-4o"
+)
+
 config = WorkerConfig(
     name="my-assistant",
     system_prompt="You are a helpful AI assistant.",
-    llms={
-        "openai": OpenAIService(
-            api_key="your-openai-key",
-            model="gpt-4o"
-        )
-    }
+    llm_provider=llm_provider
 )
 
 # Create and use the worker
@@ -94,26 +94,35 @@ worker.stop()
 ### 3. Use Multiple LLM Services
 
 ```python
-from autoppia.src.llms import LLMRegistry, OpenAIService, GoogleGeminiService
+from autoppia.src.llms import LLMRegistry, create_openai_provider, create_anthropic_provider
 
-# Register multiple LLM services
-LLMRegistry.register_service("openai", OpenAIService)
-LLMRegistry.register_service("gemini", GoogleGeminiService)
+# Create registry
+registry = LLMRegistry()
 
-# Initialize services
-LLMRegistry.initialize_service("openai", api_key="your-openai-key", model="gpt-4")
-LLMRegistry.initialize_service("gemini", api_key="your-google-key", model="gemini-pro")
+# Add multiple LLM configurations
+openai_config = create_openai_provider(
+    api_key="your-openai-key",
+    model="gpt-4o"
+)
 
-# Get and use different services
-openai_llm = LLMRegistry.get_service("openai").get_llm()
-gemini_llm = LLMRegistry.get_service("gemini").get_llm()
+anthropic_config = create_anthropic_provider(
+    api_key="your-anthropic-key",
+    model="claude-3-opus-20240229"
+)
 
-# Compare responses
-openai_response = openai_llm.predict("What is the capital of France?")
-gemini_response = gemini_llm.predict("What is the capital of France?")
+# Add to registry
+registry.add_config("openai-main", openai_config)
+registry.add_config("anthropic-main", anthropic_config)
 
-print(f"OpenAI: {openai_response}")
-print(f"Gemini: {gemini_response}")
+# Set default
+registry.set_default_config("openai-main")
+
+# Get configurations
+openai_llm = registry.get_config("openai-main")
+anthropic_llm = registry.get_config("anthropic-main")
+
+print(f"OpenAI: {openai_llm.get_provider_info()}")
+print(f"Anthropic: {anthropic_llm.get_provider_info()}")
 ```
 
 ## 🏗️ Architecture
@@ -274,7 +283,8 @@ pytest tests/test_workers.py
 - **`AutomataAgent`**: Web automation agent
 - **`AIWorker`**: Base class for AI workers
 - **`WorkerConfig`**: Worker configuration container
-- **`LLMRegistry`**: Language model service registry
+- **`LLMRegistry`**: Language model configuration registry
+- **`SimpleLLMProvider`**: Base LLM provider implementation
 - **`IntegrationInterface`**: Base class for integrations
 
 ### Key Methods
@@ -282,7 +292,48 @@ pytest tests/test_workers.py
 - **`worker.start()`**: Initialize worker resources
 - **`worker.call(message)`**: Process incoming message
 - **`worker.stop()`**: Cleanup worker resources
-- **`llm.predict(prompt)`**: Generate LLM response
+- **`llm_provider.get_provider_info()`**: Get provider information
+- **`registry.add_config(name, config)`**: Add LLM configuration
+- **`registry.get_config(name)`**: Get LLM configuration
+
+## 🔌 Dependencies
+
+The SDK includes the following key dependencies:
+
+### Core Dependencies
+- **python-dotenv**: Environment variable management
+- **websockets**: WebSocket support for real-time communication
+- **requests**: HTTP client for API calls
+- **patchright**: Web automation framework
+
+### LLM and AI
+- **langchain**: LangChain framework for LLM orchestration
+- **langchain-openai**: OpenAI integration
+- **langchain-community**: Community integrations
+- **langchain-pinecone**: Pinecone vector database integration
+- **openai**: OpenAI Python client
+- **tiktoken**: Token counting for OpenAI models
+
+### Vector Stores and Embeddings
+- **langchain-pinecone**: Pinecone vector database support
+- **boto3**: AWS S3 integration for file storage
+
+### Database and Storage
+- **psycopg2-binary**: PostgreSQL database adapter
+- **pymongo**: MongoDB integration
+- **injector**: Dependency injection framework
+
+### Web and Automation
+- **selenium**: Web browser automation
+- **bs4**: BeautifulSoup for HTML parsing
+- **google-api-python-client**: Google API integration
+- **google-auth-oauthlib**: Google OAuth authentication
+
+### Development Tools
+- **pytest**: Testing framework
+- **black**: Code formatting
+- **flake8**: Linting
+- **isort**: Import sorting
 
 ## 🤝 Contributing
 

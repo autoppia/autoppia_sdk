@@ -1,78 +1,60 @@
 """
-Framework-Agnostic Language Model Providers for Autoppia SDK
+Simple LLM Configuration for Autoppia SDK
 
-This package provides interfaces and implementations for various language model providers
-that are not tied to any specific framework (LangChain, OpenAI Assistants, LlamaIndex, etc.).
-Each provider focuses on configuration management, credential validation, and framework adapter creation.
+This package provides a simple, clean interface for LLM configuration
+without framework-specific implementations or complex abstractions.
 
 Quick Start:
-    from autoppia.src.llms import LLMRegistry, LLMProviderConfig, create_openai_provider
+    from autoppia.src.llms import LLMConfig, create_openai_provider, LLMRegistry
     
     # Create provider configuration
-    config = LLMProviderConfig(
-        provider_name="my-openai",
-        provider_type="openai",
+    config = create_openai_provider(
         api_key="sk-...",
-        model_name="gpt-4o"
+        model="gpt-4o"
     )
     
-    # Register provider
+    # Add to registry
     registry = LLMRegistry()
-    registry.register_provider_from_config("openai", config)
+    registry.add_config("my-openai", config)
     
-    # Use with different frameworks
-    langchain_llm = registry.create_framework_adapter("langchain", "openai")
-    openai_client = registry.create_framework_adapter("openai_assistants", "openai")
+    # Get configuration info
+    info = config.get_info()
+    print(f"Provider: {info['provider_type']}, Model: {info['model_name']}")
 """
 
-from .interface import LLMProviderInterface, LLMProviderConfig, LLMProviderFactory
+from .interface import LLMConfig, LLMProvider
 from .providers import (
-    OpenAIProvider,
-    AnthropicProvider,
-    GoogleGeminiProvider,
-    CohereProvider,
-    HuggingFaceProvider,
-    OllamaProvider,
-    LocalLLMProvider,
+    SimpleLLMProvider,
     # Convenience functions
+    create_provider,
     create_openai_provider,
     create_anthropic_provider,
-    create_gemini_provider,
-    create_cohere_provider,
-    create_huggingface_provider,
-    create_ollama_provider,
+    create_custom_provider,
     create_local_provider
 )
-from .registry import LLMRegistry, get_llm_registry, register_provider, get_provider, create_framework_adapter
+from .registry import LLMRegistry, get_llm_registry, add_llm_config, get_llm_config, list_llm_configs
+from .adapter import LLMAdapter
 
 __all__ = [
-    # Core interfaces
-    "LLMProviderInterface",
-    "LLMProviderConfig", 
-    "LLMProviderFactory",
-    
-    # Provider implementations
-    "OpenAIProvider",
-    "AnthropicProvider",
-    "GoogleGeminiProvider",
-    "CohereProvider",
-    "HuggingFaceProvider",
-    "OllamaProvider",
-    "LocalLLMProvider",
+    # Core classes
+    "LLMConfig",
+    "LLMProvider",
+    "SimpleLLMProvider",
     
     # Registry
     "LLMRegistry",
     "get_llm_registry",
-    "register_provider",
-    "get_provider",
-    "create_framework_adapter",
+    "add_llm_config",
+    "get_llm_config",
+    "list_llm_configs",
     
     # Convenience functions
+    "create_provider",
     "create_openai_provider",
     "create_anthropic_provider",
-    "create_gemini_provider",
-    "create_cohere_provider",
-    "create_huggingface_provider",
-    "create_ollama_provider",
+    "create_custom_provider",
     "create_local_provider",
+    
+    # Adapter
+    "LLMAdapter",
 ] 
