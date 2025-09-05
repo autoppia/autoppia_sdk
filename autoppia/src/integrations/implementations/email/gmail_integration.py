@@ -18,10 +18,20 @@ class GmailIntegration(EmailIntegration, Integration):
     This class implements email functionality using Gmail's REST API.
     It supports both regular Gmail accounts and Google Workspace accounts.
 
+    Required Configuration Attributes:
+        client_id (str): Gmail API OAuth2 Client ID
+        client_secret (str): Gmail API OAuth2 Client Secret
+        refresh_token (str): Gmail API OAuth2 Refresh Token
+        user_email (str): Gmail account email address
+
+    Optional Configuration Attributes:
+        access_token (str): Gmail API OAuth2 Access Token (auto-generated)
+        scopes (str): Comma-separated Gmail API OAuth2 Scopes
+        api_version (str): Gmail API version to use (default: v1)
+
     Attributes:
         integration_config (IntegrationConfig): Configuration object containing Gmail settings
         service: Gmail API service object
-        credentials: Google OAuth2 credentials
         SCOPES: Gmail API scopes for read and send permissions
     """
 
@@ -32,13 +42,24 @@ class GmailIntegration(EmailIntegration, Integration):
     def __init__(self, integration_config: IntegrationConfig):
         self.integration_config = integration_config
         
-        # Get credentials from config
-        self.credentials_json = integration_config.attributes.get("credentials_json")
-        self.token_json = integration_config.attributes.get("token_json")
+        # Get OAuth2 credentials from config
+        self.client_id = integration_config.attributes.get("client_id")
+        self.client_secret = integration_config.attributes.get("client_secret")
+        self.refresh_token = integration_config.attributes.get("refresh_token")
+        self.access_token = integration_config.attributes.get("access_token")
+        self.scopes = integration_config.attributes.get("scopes", "").split(",") if integration_config.attributes.get("scopes") else self.SCOPES
+        self.user_email = integration_config.attributes.get("user_email")
+        self.api_version = integration_config.attributes.get("api_version", "v1")
         
         # Validate required fields
-        if not self.credentials_json:
-            raise ValueError("Gmail credentials_json is required")
+        if not self.client_id:
+            raise ValueError("Gmail client_id is required")
+        if not self.client_secret:
+            raise ValueError("Gmail client_secret is required")
+        if not self.refresh_token:
+            raise ValueError("Gmail refresh_token is required")
+        if not self.user_email:
+            raise ValueError("Gmail user_email is required")
         
         # Initialize Gmail service
         self.service = self._get_gmail_service()
@@ -47,40 +68,51 @@ class GmailIntegration(EmailIntegration, Integration):
         """Initialize and return Gmail API service."""
         creds = None
         
-        # Load existing token if available
-        if self.token_json:
-            try:
-                token_data = json.loads(self.token_json)
-                creds = Credentials.from_authorized_user_info(token_data, self.SCOPES)
-            except Exception as e:
-                print(f"Error loading token: {e}")
-        
-        # If there are no (valid) credentials available, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+        # Create credentials from individual OAuth2 attributes
+        try:
+            # If we have an access token, try to use it first
+            if self.access_token:
+                creds = Credentials(
+                    token=self.access_token,
+                    refresh_token=self.refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    scopes=self.scopes
+                )
             else:
-                try:
-                    credentials_data = json.loads(self.credentials_json)
-                    flow = InstalledAppFlow.from_client_config(credentials_data, self.SCOPES)
-                    creds = flow.run_local_server(port=0)
-                except Exception as e:
-                    raise ValueError(f"Error setting up Gmail authentication: {e}")
+                # Create credentials with just refresh token
+                creds = Credentials(
+                    token=None,
+                    refresh_token=self.refresh_token,
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    scopes=self.scopes
+                )
+            
+            # Check if credentials are valid, refresh if needed
+            if not creds.valid:
+                if creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                    # Update access token in config if it was refreshed
+                    self._update_access_token(creds.token)
+                else:
+                    raise ValueError("Invalid Gmail credentials - refresh token may be expired")
+                    
+        except Exception as e:
+            raise ValueError(f"Error setting up Gmail authentication: {e}")
         
-        # Save the credentials for the next run
-        if self.token_json is None:
-            # Store token for future use
-            token_data = {
-                'token': creds.token,
-                'refresh_token': creds.refresh_token,
-                'token_uri': creds.token_uri,
-                'client_id': creds.client_id,
-                'client_secret': creds.client_secret,
-                'scopes': creds.scopes
-            }
-            # Note: In a real implementation, you'd want to save this back to the config
-        
-        return build('gmail', 'v1', credentials=creds)
+        return build('gmail', self.api_version, credentials=creds)
+    
+    def _update_access_token(self, new_access_token: str):
+        """Update the access token in the integration config."""
+        try:
+            # Update the access token in the integration config
+            if hasattr(self.integration_config, 'attributes'):
+                self.integration_config.attributes['access_token'] = new_access_token
+        except Exception as e:
+            print(f"Warning: Could not update access token: {e}")
 
     def send_email(
         self,
