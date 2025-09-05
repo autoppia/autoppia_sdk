@@ -5,18 +5,21 @@ This package provides the core worker system for creating, managing, and deployi
 autonomous AI agents with support for various integrations and deployment options.
 
 Quick Start:
-    from autoppia.src.workers import AIWorker, WorkerConfig, WorkerAPI
+    from autoppia.src.workers import AIWorker, WorkerConfig, WorkerAPI, run_worker_server
     
-    # Create a worker configuration
-    config = WorkerConfig(
-        name="my-worker",
-        system_prompt="You are a helpful AI assistant",
-        llms={"openai": openai_service}
+    # Simple way - use utility functions
+    await run_worker_server(
+        worker_id=123,
+        worker_class=MyWorker,
+        host="0.0.0.0",
+        port=8081,
+        worker_name="My Worker"
     )
     
-    # Start the worker
+    # Manual way - create configuration and start API
+    config = get_worker_config(worker_id=123)
     worker = MyWorker(config)
-    worker.start()
+    worker_api = await create_and_start_worker_api(123, MyWorker)
 """
 
 from .interface import AIWorker, WorkerConfig
@@ -24,6 +27,7 @@ from .worker_api import WorkerAPI
 from .router import WorkerRouter
 from .adapter import AIWorkerConfigAdapter
 from .worker_user_conf_service import WorkerUserConfService
+from .worker_utils import get_worker_config, create_and_start_worker_api, run_worker_server
 
 __all__ = [
     "AIWorker",
@@ -32,4 +36,7 @@ __all__ = [
     "WorkerRouter",
     "AIWorkerConfigAdapter",
     "WorkerUserConfService",
+    "get_worker_config",
+    "create_and_start_worker_api",
+    "run_worker_server",
 ]
