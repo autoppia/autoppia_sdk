@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from typing import List, Dict, Optional
-from patchright.async_api import async_playwright, Page
+from playwright.async_api import async_playwright, Page
 
 # Optional: key mapping if your model uses "CUA" style keys
 CUA_KEY_TO_PLAYWRIGHT_KEY = {
