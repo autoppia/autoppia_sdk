@@ -1,5 +1,6 @@
 from autoppia.src.integrations.config import IntegrationConfig
 from autoppia.src.integrations.implementations.email.smtp_integration import SMPTEmailIntegration
+from autoppia.src.integrations.implementations.email.gmail_integration import GmailIntegration
 from autoppia.src.integrations.implementations.database.postgres_integration import PostgresIntegration
 from autoppia.src.integrations.implementations.api.api_integration import AutoppiaIntegration
 from autoppia.src.integrations.implementations.web_search.google_integration import GoogleIntegration
@@ -51,7 +52,8 @@ class IntegrationsAdapter():
         """
         self.integration_mapping = {
             "email": {
-                "Smtp": SMPTEmailIntegration
+                "SMTP": SMPTEmailIntegration,
+                "Gmail": GmailIntegration
             },
             "database": {
                 "PostgreSQL": PostgresIntegration
