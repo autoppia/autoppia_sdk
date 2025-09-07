@@ -92,8 +92,8 @@ class GmailIntegration(EmailIntegration, Integration):
                 )
             
             # Check if credentials are valid, refresh if needed
-            if not creds.valid:
-                if creds.expired and creds.refresh_token:
+            if not creds.valid or creds.token is None:
+                if creds.refresh_token:
                     creds.refresh(Request())
                     # Update access token in config if it was refreshed
                     self._update_access_token(creds.token)
