@@ -25,7 +25,7 @@ class WorkerClient:
         self.worker_ip = worker_ip
         self.worker_port = worker_port
         self.api_verifier = ApiKeyVerifier(base_url=api_base_url)
-        self.router = WorkerRouter(worker_ip, worker_port)
+        self.router = WorkerRouter(worker_ip, worker_port, api_key=api_key)
 
         self._ensure_valid_api_key()
 

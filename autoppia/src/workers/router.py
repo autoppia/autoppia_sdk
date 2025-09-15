@@ -56,7 +56,7 @@ class WorkerRouter:
     - Simple API for easy integration
     """
     
-    def __init__(self, ip: str, port: int):
+    def __init__(self, ip: str, port: int, api_key: Optional[str] = None):
         """
         Initialize the WorkerRouter.
 
@@ -73,6 +73,7 @@ class WorkerRouter:
         self.event_loop = None
         self.loop_thread = None
         self._lock = threading.Lock()
+        self.api_key = api_key
         
         # Configuration
         self.connect_timeout = 30  # seconds
@@ -201,13 +202,19 @@ class WorkerRouter:
         logger.info(f"Connecting to {self.url}...")
         
         try:
+            connect_kwargs = {
+                "ping_interval": 20,
+                "ping_timeout": 60,
+                "close_timeout": 10,
+                "max_size": 50 * 1024 * 1024,
+            }
+            if self.api_key:
+                connect_kwargs["extra_headers"] = {"x-api-key": self.api_key}
+
             self.websocket = await asyncio.wait_for(
                 websockets.connect(
                     self.url,
-                    ping_interval=20,
-                    ping_timeout=60,
-                    close_timeout=10,
-                    max_size=50 * 1024 * 1024  # 50MB max message size
+                    **connect_kwargs
                 ),
                 timeout=self.connect_timeout
             )
