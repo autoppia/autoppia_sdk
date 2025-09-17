@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .models import MessageType, WebSocketMessage
 from ..utils.api_key import ApiKeyVerifier
+from ..utils.jwt_verifier import JWTVerifier
 from urllib.parse import urlparse, parse_qs
 
 # Configure logging
@@ -104,8 +105,9 @@ class WorkerAPI:
         self.is_running = False
         # Always require API key regardless of passed value
         self.require_api_key = True
-        # Always initialize verifier since API key is always required
+        # Initialize verifiers
         self.api_verifier = ApiKeyVerifier(base_url=api_base_url)
+        self.jwt_verifier = JWTVerifier(base_url=api_base_url)
         
         logger.info(f"WorkerAPI initialized on {host}:{port}")
         logger.info(f"Heartbeat interval: {self.heartbeat_interval}s, Connection timeout: {self.connection_timeout}s")
@@ -164,30 +166,39 @@ class WorkerAPI:
     
     async def _handle_client(self, websocket, path):
         """Handle new client connections"""
-        # API key verification (header: x-api-key or query param: api_key)
-        if self.require_api_key:
-            api_key = None
+        # Authentication: accept either API key (for scripts/console) or JWT (for browsers)
+        api_key = None
+        bearer_token = None
+        try:
+            headers = getattr(websocket, 'request_headers', None)
+            if headers:
+                api_key = headers.get('x-api-key') or headers.get('X-API-Key')
+                auth_header = headers.get('Authorization') or headers.get('authorization')
+                if auth_header and auth_header.startswith('Bearer '):
+                    bearer_token = auth_header.split(' ', 1)[1]
+
+            if (not api_key and not bearer_token) and path:
+                parsed = urlparse(path)
+                qs = parse_qs(parsed.query)
+                values = qs.get('api_key')
+                api_key = values[0] if values else None
+                if not api_key:
+                    jwt_vals = qs.get('accessToken') or qs.get('jwt')
+                    bearer_token = (jwt_vals[0] if jwt_vals else None)
+        except Exception as e:
+            logger.error(f"Error extracting credentials: {e}")
+
+        if not api_key and not bearer_token:
+            logger.warning("Missing credentials. Closing connection.")
             try:
-                headers = getattr(websocket, 'request_headers', None)
-                if headers:
-                    api_key = headers.get('x-api-key') or headers.get('X-API-Key')
-                if not api_key and path:
-                    parsed = urlparse(path)
-                    qs = parse_qs(parsed.query)
-                    values = qs.get('api_key')
-                    api_key = values[0] if values else None
-            except Exception as e:
-                logger.error(f"Error extracting API key: {e}")
-            
-            if not api_key:
-                logger.warning("Missing API key. Closing connection.")
-                try:
-                    await websocket.close(code=4401, reason="API key required")
-                finally:
-                    return
-            
-            try:
-                loop = asyncio.get_event_loop()
+                await websocket.close(code=4401, reason="Credentials required")
+            finally:
+                return
+
+        # Verify provided credential
+        try:
+            loop = asyncio.get_event_loop()
+            if api_key:
                 result = await loop.run_in_executor(self.executor, self.api_verifier.verify_api_key, api_key)
                 if not result or not result.get('is_valid'):
                     logger.warning("Invalid API key. Closing connection.")
@@ -195,12 +206,20 @@ class WorkerAPI:
                         await websocket.close(code=4403, reason="Invalid API key")
                     finally:
                         return
-            except Exception as e:
-                logger.error(f"API key verification error: {e}")
-                try:
-                    await websocket.close(code=1011, reason="Verification error")
-                finally:
-                    return
+            else:
+                result = await loop.run_in_executor(self.executor, self.jwt_verifier.verify_jwt, bearer_token)
+                if not result or not result.get('is_valid'):
+                    logger.warning("Invalid JWT. Closing connection.")
+                    try:
+                        await websocket.close(code=4403, reason="Invalid JWT")
+                    finally:
+                        return
+        except Exception as e:
+            logger.error(f"Credential verification error: {e}")
+            try:
+                await websocket.close(code=1011, reason="Verification error")
+            finally:
+                return
 
         client_id = str(uuid.uuid4())
         client = ClientConnection(websocket, client_id)
