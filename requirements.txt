@@ -19,5 +19,5 @@ langchain-pinecone
 boto3
 websockets
 requests
-patchright
+# patchright
 playwright
