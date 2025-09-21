@@ -20,31 +20,29 @@ class PineconeManager(VectorStoreInterface):
     chunking, and similarity search capabilities.
     """
 
-    def __init__(self, api_key: str, index_name: str):
+    def __init__(self, api_key: str, index_name: str, embedding_api_key: str):
         """Initialize Pinecone vector store manager.
         
         Args:
             api_key (str): Pinecone API key
             index_name (str): Name of the Pinecone index
+            embedding_api_key (str): OpenAI API key for embeddings
         """
-        self.embeddings = OpenAIEmbeddings()
+        self.embeddings = OpenAIEmbeddings(api_key=embedding_api_key)
         self.index_name = index_name
         self.api_key = api_key
         self.pc = Pinecone(api_key=self.api_key)
-        self.pcvs = self.get_or_create_collection(self.index_name)
+        self.pcvs = self.get_or_create_collection()
         self.s3_manager = S3Manager()
 
-    def get_or_create_collection(self, index_name):
+    def get_or_create_collection(self):
         """Get existing Pinecone index or create new one.
         
-        Args:
-            index_name (str): Name of the index
-            
         Returns:
             PineconeVectorStore: Vector store instance
         """
-        if index_name not in self.pc.list_indexes().names():
-            self.pc.create_index(index_name, dimension=1536, metric="cosine", spec={"serverless": {"cloud": "aws", "region": "us-east-1"}})
+        if self.index_name not in self.pc.list_indexes().names():
+            self.pc.create_index(self.index_name, dimension=1536, metric="cosine", spec={"serverless": {"cloud": "aws", "region": "us-east-1"}})
         return PineconeVectorStore.from_existing_index(self.index_name, self.embeddings)
 
     def add_document(self, file_path, filter={"chat_session": 1}):
@@ -61,7 +59,7 @@ class PineconeManager(VectorStoreInterface):
             chunk_size=1500, chunk_overlap=200
         )
         docs = text_splitter.split_documents(documents)
-        embeddings = OpenAIEmbeddings()
+        embeddings = OpenAIEmbeddings(api_key=self.embeddings.openai_api_key) if hasattr(self.embeddings, 'openai_api_key') else self.embeddings
 
         texts = [d.page_content for d in docs]
         metadatas = [filter for d in docs]
@@ -70,6 +68,13 @@ class PineconeManager(VectorStoreInterface):
         PineconeVectorStore.from_texts(
             texts, embeddings, metadatas=metadatas, index_name=self.index_name
         )
+    def delete_document(self, filter: dict):
+        """Delete vectors matching a metadata filter from the index."""
+        try:
+            pinecone_index = PineconeVectorStore.get_pinecone_index(index_name=self.index_name)
+            pinecone_index.delete(filter=filter or {})
+        except Exception:
+            pass
         # PineconeVectorStore.from_documents(docs, embeddings, index_name=self.index_name)
 
     def get_context(self, query, filter=None):

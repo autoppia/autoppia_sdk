@@ -10,15 +10,16 @@ class OpenAIManager(VectorStoreInterface):
     Manages vector store operations using OpenAI's API.
     """
 
-    def __init__(self, index_name: str, vector_store_id: str = None):
+    def __init__(self, api_key: str, index_name: str, vector_store_id: str = None):
         """Initialize OpenAI vector store manager.
         
         Args:
+            api_key (str): OpenAI API key
             index_name (str): Name of the vector store index
             vector_store_id (str, optional): ID of existing vector store
         """
         self.vector_store_id = vector_store_id
-        self.client = OpenAI()
+        self.client = OpenAI(api_key=api_key)
         self.s3_manager = S3Manager()
         self.index_name = index_name
 
@@ -66,8 +67,47 @@ class OpenAIManager(VectorStoreInterface):
         except Exception as e:
             raise Exception(f"Error adding document to OpenAI vector store: {str(e)}")
 
-    def get_context(self):
-        pass
+    def delete_document(self, file_id: str):
+        """Delete a file from the vector store (and optionally from OpenAI storage)."""
+        if not self.vector_store_id or not file_id:
+            return
+        try:
+            self.client.beta.vector_stores.files.delete(
+                vector_store_id=self.vector_store_id,
+                file_id=file_id,
+            )
+            # Best-effort cleanup of file storage
+            try:
+                self.client.files.delete(file_id=file_id)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def get_context(self, query: str) -> str:
+        """Search the vector store using file_search via Responses API and return text context."""
+        if not self.vector_store_id:
+            return ""
+        try:
+            response = self.client.responses.create(
+                model="gpt-4o-mini",
+                input=query,
+                tools=[{"type": "file_search"}],
+                search={"vector_store_ids": [self.vector_store_id]},
+            )
+            text = getattr(response, "output_text", None)
+            if text:
+                return text
+            outputs = getattr(response, "output", [])
+            parts = []
+            for item in outputs:
+                for content in getattr(item, "content", []):
+                    value = getattr(getattr(content, "text", None), "value", None)
+                    if value:
+                        parts.append(value)
+            return "\n".join(parts)
+        except Exception:
+            return ""
 
     def get_files(self, vector_store_id: str):
         """List files in a vector store.
