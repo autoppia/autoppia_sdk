@@ -8,11 +8,11 @@ class VectorStoreInterface(ABC):
     """
 
     @abstractmethod
-    def get_or_create_collection(self, collection_name):
+    def get_or_create_collection(self):
         """Get an existing collection or create a new one if it doesn't exist.
         
         Args:
-            collection_name (str): Name of the collection to get or create
+            None
             
         Returns:
             Any: The vector store collection instance
@@ -26,6 +26,14 @@ class VectorStoreInterface(ABC):
         Args:
             document: Document to be added to the vector store
         """
+        pass
+
+    @abstractmethod
+    def delete_document(self, *args, **kwargs):
+        """Delete a document or entries from the vector store.
+        
+        Implementations may accept different arguments (e.g., file_id for OpenAI,
+        metadata filter for Pinecone)."""
         pass
 
     @abstractmethod
