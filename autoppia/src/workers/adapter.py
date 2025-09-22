@@ -6,8 +6,6 @@ from autoppia.src.llms.adapter import LLMAdapter
 from autoppia.src.workers.interface import WorkerConfig
 
 
-
-
 class AIWorkerConfigAdapter:
     """Adapter for constructing worker configurations from backend DTOs.
     
@@ -43,14 +41,12 @@ class AIWorkerConfigAdapter:
             Dictionary of vector store clients keyed by provider
         """
         if not self.worker_config_dto or not self.worker_config_dto.embedding_database:
-            return {}
+            return None
 
-        vector_store = VectorStoreAdapter(
+        return VectorStoreAdapter(
             self.worker_config_dto.embedding_database
         ).from_backend()
         
-        return {self.worker_config_dto.embedding_database.provider: vector_store} if vector_store else {}
-
     def adapt_llms(self) -> Dict[str, Any]:
         """Adapt LLM configuration from backend DTO.
         
@@ -58,11 +54,9 @@ class AIWorkerConfigAdapter:
             Dictionary of LLM clients keyed by provider
         """
         if not self.worker_config_dto or not self.worker_config_dto.user_llm_model:
-            return {}
+            return None
 
-        llm = LLMAdapter(self.worker_config_dto.user_llm_model).from_backend()
-        provider = self.worker_config_dto.user_llm_model.llm_model.provider.provider_type
-        return {provider: llm} if llm else {}
+        return LLMAdapter(self.worker_config_dto.user_llm_model).from_backend()
 
     def adapt_toolkits(self) -> None:
         """Placeholder for toolkit adaptation (not implemented)."""
@@ -88,8 +82,8 @@ class AIWorkerConfigAdapter:
 
         return WorkerConfig(
             integrations=self.adapt_integrations(),
-            vectorstores=self.adapt_vector_stores(),
-            llms=self.adapt_llms(),
+            vectorstore=self.adapt_vector_stores(),
+            llm=self.adapt_llms(),
             system_prompt=worker_config_dto.system_prompt.prompt if worker_config_dto.system_prompt else None,
             mcp=worker_config_dto.mcp if worker_config_dto.mcp else None,
             name=worker_config_dto.name,
