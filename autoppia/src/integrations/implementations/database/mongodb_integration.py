@@ -23,6 +23,7 @@ class MongoDBIntegration(DatabaseIntegration, Integration):
         self.username = attrs.get("user") or attrs.get("username")
         self._password = attrs.get("password")
         self.database = attrs.get("database") or attrs.get("dbname")
+        self.auth_source = attrs.get("auth_source")
 
         if not self.uri:
             auth = f"{self.username}:{self._password}@" if self.username and self._password else ""
