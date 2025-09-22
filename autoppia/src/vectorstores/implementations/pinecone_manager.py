@@ -42,8 +42,19 @@ class PineconeManager(VectorStoreInterface):
             PineconeVectorStore: Vector store instance
         """
         if self.index_name not in self.pc.list_indexes().names():
-            self.pc.create_index(self.index_name, dimension=1536, metric="cosine", spec={"serverless": {"cloud": "aws", "region": "us-east-1"}})
-        return PineconeVectorStore.from_existing_index(self.index_name, self.embeddings)
+            self.pc.create_index(
+                self.index_name,
+                dimension=1536,
+                metric="cosine",
+                spec={"serverless": {"cloud": "aws", "region": "us-east-1"}},
+            )
+        # Construct vector store directly with API key to avoid env var dependency
+        return PineconeVectorStore(
+            embedding=self.embeddings,
+            pinecone_api_key=self.api_key,
+            index_name=self.index_name,
+        )
+
 
     def add_document(self, file_path, filter={"chat_session": 1}):
         """Add a document to the vector store.
@@ -64,14 +75,15 @@ class PineconeManager(VectorStoreInterface):
         texts = [d.page_content for d in docs]
         metadatas = [filter for d in docs]
 
-        # Save Vector DB in pinecone
-        PineconeVectorStore.from_texts(
-            texts, embeddings, metadatas=metadatas, index_name=self.index_name
-        )
+        # Save vectors using the initialized vector store; no env var required
+        self.pcvs.add_texts(texts=texts, metadatas=metadatas)
     def delete_document(self, filter: dict):
         """Delete vectors matching a metadata filter from the index."""
         try:
-            pinecone_index = PineconeVectorStore.get_pinecone_index(index_name=self.index_name)
+            pinecone_index = PineconeVectorStore.get_pinecone_index(
+                index_name=self.index_name,
+                pinecone_api_key=self.api_key,
+            )
             pinecone_index.delete(filter=filter or {})
         except Exception:
             pass
