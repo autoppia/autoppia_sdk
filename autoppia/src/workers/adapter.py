@@ -81,9 +81,9 @@ class AIWorkerConfigAdapter:
             raise ValueError("Missing required field: 'name' (worker identifier)")
 
         return WorkerConfig(
-            integrations=self.adapt_integrations(),
-            vectorstore=self.adapt_vector_stores(),
             llm=self.adapt_llms(),
+            vectorstore=self.adapt_vector_stores(),
+            integrations=self.adapt_integrations(),
             system_prompt=worker_config_dto.system_prompt.prompt if worker_config_dto.system_prompt else None,
             mcp=worker_config_dto.mcp if worker_config_dto.mcp else None,
             name=worker_config_dto.name,

@@ -17,19 +17,19 @@ class WorkerConfig:
         port: Port number of the worker
         integrations: Dictionary of integration clients keyed by provider
         llms: Dictionary of LLM services keyed by provider
-        vectorstores: Dictionary of vector stores keyed by provider
+        vectorstore: Dictionary of vector stores keyed by provider
         extra_arguments: Additional provider-specific configuration parameters
 
     """
     
     name: str
+    llm: LLMServiceInterface
+    vectorstore: VectorStoreInterface
     system_prompt: Optional[str] = None
     mcp: Optional[str] = None
     ip: Optional[str] = None
     port: Optional[int] = None
     integrations: Dict[str, IntegrationInterface] = field(default_factory=dict)
-    llms: Dict[str, LLMServiceInterface] = field(default_factory=dict)
-    vectorstores: Dict[str, VectorStoreInterface] = field(default_factory=dict)
     extra_arguments: Dict[str, Any] = field(default_factory=dict)
 
 
