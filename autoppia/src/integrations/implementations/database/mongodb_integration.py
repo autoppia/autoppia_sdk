@@ -150,140 +150,140 @@ class MongoDBIntegration(DatabaseIntegration, Integration):
             # Command-style shape: { find: "col", filter: {...}, projection, sort, limit, skip }
             # Also supports: insertOne, insertMany, updateOne, updateMany, deleteOne, deleteMany,
             # replaceOne, findOne, findOneAndUpdate, distinct, countDocuments, aggregate
-            else:
-                # find
-                if "find" in payload:
-                    collection_name = payload.get("find")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    projection = payload.get("projection")
-                    sort = payload.get("sort")
-                    limit = payload.get("limit")
-                    skip = payload.get("skip")
+            # else:
+            #     # find
+            #     if "find" in payload:
+            #         collection_name = payload.get("find")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         projection = payload.get("projection")
+            #         sort = payload.get("sort")
+            #         limit = payload.get("limit")
+            #         skip = payload.get("skip")
 
-                    cursor = coll.find(filter_doc, projection)
-                    if sort:
-                        if isinstance(sort, dict):
-                            sort = list(sort.items())
-                        cursor = cursor.sort(sort)
-                    if skip:
-                        cursor = cursor.skip(int(skip))
-                    if limit:
-                        cursor = cursor.limit(int(limit))
-                    return list(cursor)
+            #         cursor = coll.find(filter_doc, projection)
+            #         if sort:
+            #             if isinstance(sort, dict):
+            #                 sort = list(sort.items())
+            #             cursor = cursor.sort(sort)
+            #         if skip:
+            #             cursor = cursor.skip(int(skip))
+            #         if limit:
+            #             cursor = cursor.limit(int(limit))
+            #         return list(cursor)
 
-                # findOne
-                if "findOne" in payload:
-                    collection_name = payload.get("findOne")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    projection = payload.get("projection")
-                    return coll.find_one(filter_doc, projection)
+            #     # findOne
+            #     if "findOne" in payload:
+            #         collection_name = payload.get("findOne")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         projection = payload.get("projection")
+            #         return coll.find_one(filter_doc, projection)
 
-                # insertOne
-                if "insertOne" in payload:
-                    collection_name = payload.get("insertOne")
-                    coll = db[collection_name]
-                    document = payload.get("document", {})
-                    return coll.insert_one(document).inserted_id
+            #     # insertOne
+            #     if "insertOne" in payload:
+            #         collection_name = payload.get("insertOne")
+            #         coll = db[collection_name]
+            #         document = payload.get("document", {})
+            #         return coll.insert_one(document).inserted_id
 
-                # insertMany
-                if "insertMany" in payload:
-                    collection_name = payload.get("insertMany")
-                    coll = db[collection_name]
-                    documents = payload.get("documents", [])
-                    return coll.insert_many(documents).inserted_ids
+            #     # insertMany
+            #     if "insertMany" in payload:
+            #         collection_name = payload.get("insertMany")
+            #         coll = db[collection_name]
+            #         documents = payload.get("documents", [])
+            #         return coll.insert_many(documents).inserted_ids
 
-                # updateOne
-                if "updateOne" in payload:
-                    collection_name = payload.get("updateOne")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    update = payload.get("update") or {}
-                    upsert = bool(payload.get("upsert", False))
-                    array_filters = payload.get("arrayFilters")
-                    kwargs = {"upsert": upsert}
-                    if array_filters:
-                        kwargs["array_filters"] = array_filters
-                    return coll.update_one(filter_doc, update, **kwargs).modified_count
+            #     # updateOne
+            #     if "updateOne" in payload:
+            #         collection_name = payload.get("updateOne")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         update = payload.get("update") or {}
+            #         upsert = bool(payload.get("upsert", False))
+            #         array_filters = payload.get("arrayFilters")
+            #         kwargs = {"upsert": upsert}
+            #         if array_filters:
+            #             kwargs["array_filters"] = array_filters
+            #         return coll.update_one(filter_doc, update, **kwargs).modified_count
 
-                # updateMany
-                if "updateMany" in payload:
-                    collection_name = payload.get("updateMany")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    update = payload.get("update") or {}
-                    upsert = bool(payload.get("upsert", False))
-                    array_filters = payload.get("arrayFilters")
-                    kwargs = {"upsert": upsert}
-                    if array_filters:
-                        kwargs["array_filters"] = array_filters
-                    return coll.update_many(filter_doc, update, **kwargs).modified_count
+            #     # updateMany
+            #     if "updateMany" in payload:
+            #         collection_name = payload.get("updateMany")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         update = payload.get("update") or {}
+            #         upsert = bool(payload.get("upsert", False))
+            #         array_filters = payload.get("arrayFilters")
+            #         kwargs = {"upsert": upsert}
+            #         if array_filters:
+            #             kwargs["array_filters"] = array_filters
+            #         return coll.update_many(filter_doc, update, **kwargs).modified_count
 
-                # replaceOne
-                if "replaceOne" in payload:
-                    collection_name = payload.get("replaceOne")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    replacement = payload.get("replacement") or {}
-                    upsert = bool(payload.get("upsert", False))
-                    return coll.replace_one(filter_doc, replacement, upsert=upsert).modified_count
+            #     # replaceOne
+            #     if "replaceOne" in payload:
+            #         collection_name = payload.get("replaceOne")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         replacement = payload.get("replacement") or {}
+            #         upsert = bool(payload.get("upsert", False))
+            #         return coll.replace_one(filter_doc, replacement, upsert=upsert).modified_count
 
-                # deleteOne
-                if "deleteOne" in payload:
-                    collection_name = payload.get("deleteOne")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    return coll.delete_one(filter_doc).deleted_count
+            #     # deleteOne
+            #     if "deleteOne" in payload:
+            #         collection_name = payload.get("deleteOne")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         return coll.delete_one(filter_doc).deleted_count
 
-                # deleteMany
-                if "deleteMany" in payload:
-                    collection_name = payload.get("deleteMany")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    return coll.delete_many(filter_doc).deleted_count
+            #     # deleteMany
+            #     if "deleteMany" in payload:
+            #         collection_name = payload.get("deleteMany")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         return coll.delete_many(filter_doc).deleted_count
 
-                # findOneAndUpdate
-                if "findOneAndUpdate" in payload:
-                    collection_name = payload.get("findOneAndUpdate")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    update = payload.get("update") or {}
-                    upsert = bool(payload.get("upsert", False))
-                    return_after = payload.get("returnDocument", "after")
-                    array_filters = payload.get("arrayFilters")
-                    from pymongo import ReturnDocument
-                    rd = ReturnDocument.AFTER if str(return_after).lower() == "after" else ReturnDocument.BEFORE
-                    kwargs = {"upsert": upsert, "return_document": rd}
-                    if array_filters:
-                        kwargs["array_filters"] = array_filters
-                    return coll.find_one_and_update(filter_doc, update, **kwargs)
+            #     # findOneAndUpdate
+            #     if "findOneAndUpdate" in payload:
+            #         collection_name = payload.get("findOneAndUpdate")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         update = payload.get("update") or {}
+            #         upsert = bool(payload.get("upsert", False))
+            #         return_after = payload.get("returnDocument", "after")
+            #         array_filters = payload.get("arrayFilters")
+            #         from pymongo import ReturnDocument
+            #         rd = ReturnDocument.AFTER if str(return_after).lower() == "after" else ReturnDocument.BEFORE
+            #         kwargs = {"upsert": upsert, "return_document": rd}
+            #         if array_filters:
+            #             kwargs["array_filters"] = array_filters
+            #         return coll.find_one_and_update(filter_doc, update, **kwargs)
 
-                # distinct
-                if "distinct" in payload:
-                    collection_name = payload.get("distinct")
-                    coll = db[collection_name]
-                    key = payload.get("key")
-                    if not key:
-                        raise ValueError("'key' is required for distinct command")
-                    filter_doc = payload.get("filter", {})
-                    return coll.distinct(key, filter_doc)
+            #     # distinct
+            #     if "distinct" in payload:
+            #         collection_name = payload.get("distinct")
+            #         coll = db[collection_name]
+            #         key = payload.get("key")
+            #         if not key:
+            #             raise ValueError("'key' is required for distinct command")
+            #         filter_doc = payload.get("filter", {})
+            #         return coll.distinct(key, filter_doc)
 
-                # countDocuments
-                if "countDocuments" in payload:
-                    collection_name = payload.get("countDocuments")
-                    coll = db[collection_name]
-                    filter_doc = payload.get("filter", {})
-                    return coll.count_documents(filter_doc)
+            #     # countDocuments
+            #     if "countDocuments" in payload:
+            #         collection_name = payload.get("countDocuments")
+            #         coll = db[collection_name]
+            #         filter_doc = payload.get("filter", {})
+            #         return coll.count_documents(filter_doc)
 
-                # aggregate
-                if "aggregate" in payload:
-                    collection_name = payload.get("aggregate")
-                    coll = db[collection_name]
-                    pipeline = payload.get("pipeline", [])
-                    return list(coll.aggregate(pipeline))
+            #     # aggregate
+            #     if "aggregate" in payload:
+            #         collection_name = payload.get("aggregate")
+            #         coll = db[collection_name]
+            #         pipeline = payload.get("pipeline", [])
+            #         return list(coll.aggregate(pipeline))
 
-                raise ValueError("Unsupported MongoDB command payload")
+            #     raise ValueError("Unsupported MongoDB command payload")
         except Exception as e:
             print(f"MongoDB error: {e}")
             return None
