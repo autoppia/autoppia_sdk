@@ -7,13 +7,17 @@ import uuid
 from typing import Optional, Callable, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 import threading
-
+import os
+import jwt
+from dotenv import load_dotenv
+import requests
 from .models import MessageType, WebSocketMessage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("WorkerRouter")
 
+load_dotenv()
 
 class ConnectionState:
     """Track connection state and response handling"""
@@ -56,7 +60,7 @@ class WorkerRouter:
     - Simple API for easy integration
     """
     
-    def __init__(self, ip: str, port: int, api_key: Optional[str] = None, bearer_token: Optional[str] = None):
+    def __init__(self, ip: str, port: int, api_key: Optional[str] = None, bearer_token: Optional[str] = None, worker_id: Optional[str] = None):
         """
         Initialize the WorkerRouter.
 
@@ -82,6 +86,7 @@ class WorkerRouter:
         self.heartbeat_interval = 30  # seconds
         self.max_retries = 3
         self.retry_delay = 5  # seconds
+        self.worker_id = worker_id #worker_id
         
         logger.info(f"WorkerRouter initialized for {self.url}")
         logger.info(f"Timeouts: connect={self.connect_timeout}s, response={self.response_timeout}s")
@@ -108,10 +113,53 @@ class WorkerRouter:
             self.state.processing = True
         
         try:
-            return self._call_with_retry(message, stream_callback)
+            userId = self.authenticatedCookie(self.bearer_token)
+            result = self.reduceUserBalance(userId, self.worker_id)
+            if result:
+                return self._call_with_retry(message, stream_callback)
+            else:
+                return ""
         finally:
             with self._lock:
                 self.state.processing = False
+
+    def authenticatedCookie(self, bear_token):
+        authorization_header = bear_token
+        access_token = (
+            authorization_header.replace("Bearer ", "")
+            if authorization_header
+            else None
+        )
+
+        # Validate the access token (e.g., using a library like PyJWT)
+        if not access_token:
+            return None
+
+        try:
+            decoded_token = jwt.decode(
+                access_token,
+                key=os.getenv("SIGNING_KEY"),
+                algorithms=os.getenv("ALGORITHM"),
+            )
+            userId = decoded_token["userId"]
+            return userId
+        except jwt.ExpiredSignatureError:
+            return None
+        except jwt.InvalidTokenError:
+            return None
+        
+    def reduceUserBalance(self, userId, worker_id):
+        response = requests.post(os.getenv("REDUCE_BALANCE_ENDPOINT"), json={
+            "userId": userId,
+            "worker_id": worker_id
+        })
+
+        if response.status_code == 200:
+            result = response.json()
+            return result["success"]
+        else:
+            return False
+
     
     def _call_with_retry(self, message: str, stream_callback: Optional[Callable[[str], None]]) -> str:
         """Execute call with retry logic"""
