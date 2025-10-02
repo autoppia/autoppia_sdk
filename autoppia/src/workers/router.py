@@ -60,7 +60,7 @@ class WorkerRouter:
     - Simple API for easy integration
     """
     
-    def __init__(self, ip: str, port: int, api_key: Optional[str] = None, bearer_token: Optional[str] = None, worker_id: Optional[str] = None):
+    def __init__(self, ip: str, port: int, api_key: Optional[str] = None, bearer_token: Optional[str] = None, template_id: Optional[str] = None):
         """
         Initialize the WorkerRouter.
 
@@ -86,7 +86,7 @@ class WorkerRouter:
         self.heartbeat_interval = 30  # seconds
         self.max_retries = 3
         self.retry_delay = 5  # seconds
-        self.worker_id = worker_id #worker_id
+        self.template_id = template_id #worker_id
         
         logger.info(f"WorkerRouter initialized for {self.url}")
         logger.info(f"Timeouts: connect={self.connect_timeout}s, response={self.response_timeout}s")
@@ -114,7 +114,7 @@ class WorkerRouter:
         
         try:
             userId = self.authenticatedCookie(self.bearer_token)
-            result = self.reduceUserBalance(userId, self.worker_id)
+            result = self.reduceUserBalance(userId, self.template_id)
             if result:
                 return self._call_with_retry(message, stream_callback)
             else:
@@ -148,10 +148,10 @@ class WorkerRouter:
         except jwt.InvalidTokenError:
             return None
         
-    def reduceUserBalance(self, userId, worker_id):
+    def reduceUserBalance(self, userId, template_id):
         response = requests.post(os.getenv("REDUCE_BALANCE_ENDPOINT"), json={
             "userId": userId,
-            "worker_id": worker_id
+            "template_id": template_id
         })
 
         if response.status_code == 200:

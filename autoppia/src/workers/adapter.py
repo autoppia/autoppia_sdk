@@ -88,5 +88,6 @@ class AIWorkerConfigAdapter:
             mcp=worker_config_dto.mcp if worker_config_dto.mcp else None,
             name=worker_config_dto.name,
             ip=worker_config_dto.ip,
-            port=worker_config_dto.port
+            port=worker_config_dto.port,
+            template_id=worker_config_dto.template_id
         )

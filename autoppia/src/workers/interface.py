@@ -31,6 +31,7 @@ class WorkerConfig:
     port: Optional[int] = None
     integrations: Dict[str, IntegrationInterface] = field(default_factory=dict)
     extra_arguments: Dict[str, Any] = field(default_factory=dict)
+    template_id: str
 
 
 class AIWorker(ABC):
