@@ -304,10 +304,10 @@ class WorkerAPI:
             client.is_processing = False
     
     async def _handle_streaming_worker(self, client: ClientConnection, content: str, message_id: str):
-        """Handle streaming worker response"""
+        """Handle streaming worker response with immediate WebSocket streaming"""
         
         def stream_callback(chunk):
-            """Callback for streaming chunks"""
+            """Callback for streaming chunks - processes immediately"""
             # Convert chunk to string format
             if isinstance(chunk, dict):
                 if chunk.get("type") == "text":
@@ -319,40 +319,61 @@ class WorkerAPI:
             else:
                 return str(chunk)
         
-        # Run worker in executor to avoid blocking
-        def worker_task():
-            chunks = []
+        # Use asyncio synchronization for immediate delivery
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # Capture the main event loop before entering thread pool
+        main_loop = asyncio.get_event_loop()
+        
+        # Create a custom executor for this specific task
+        with ThreadPoolExecutor(max_workers=1) as executor:
             
-            def collect_chunk(chunk):
-                processed = stream_callback(chunk)
-                if processed:
-                    chunks.append(processed)
+            # Event to signal when worker is done
+            worker_done = asyncio.Event()
+            result_container = {"result": None, "error": None}
+            
+            def worker_task():
+                try:
+                    def sync_callback(chunk):
+                        # Process chunk immediately
+                        processed = stream_callback(chunk)
+                        if processed:
+                            # Schedule immediate WebSocket send using the main event loop
+                            main_loop.call_soon_threadsafe(
+                                lambda: asyncio.create_task(
+                                    client.send_stream(processed, message_id)
+                                )
+                            )
+                            logger.debug(f"Scheduled immediate chunk send: {processed[:50]}...")
+                    
+                    result = self.worker.call_stream(content, sync_callback)
+                    result_container["result"] = result
+                except Exception as e:
+                    result_container["error"] = e
+                finally:
+                    # Signal completion using the main event loop
+                    main_loop.call_soon_threadsafe(worker_done.set)
             
             try:
-                result = self.worker.call_stream(content, collect_chunk)
-                return result, chunks
-            except Exception as e:
-                logger.error(f"Streaming worker error: {e}")
-                raise
-        
-        try:
-            # Execute worker task
-            result, chunks = await asyncio.get_event_loop().run_in_executor(
-                self.executor, worker_task
-            )
-            
-            # Send all chunks
-            for chunk in chunks:
-                await client.send_stream(chunk, message_id)
-            
-            # Send completion
-            await client.send_complete(result or "", None)
-            
-            logger.info(f"Streaming completed for {client.client_id} ({len(chunks)} chunks)")
+                # Start worker in thread pool
+                future = executor.submit(worker_task)
                 
-        except Exception as e:
-            logger.error(f"Streaming error for {client.client_id}: {e}")
-            await client.send_complete("", str(e))
+                # Wait for worker to complete
+                await worker_done.wait()
+                
+                # Check for errors
+                if result_container["error"]:
+                    raise result_container["error"]
+                
+                # Send completion
+                await client.send_complete(result_container["result"] or "", None)
+                
+                logger.info(f"Immediate streaming completed for {client.client_id}")
+                    
+            except Exception as e:
+                logger.error(f"Streaming error for {client.client_id}: {e}")
+                await client.send_complete("", str(e))
     
     async def _handle_simple_worker(self, client: ClientConnection, content: str, message_id: str):
         """Handle simple worker response"""
